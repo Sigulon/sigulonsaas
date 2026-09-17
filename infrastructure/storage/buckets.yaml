@@ -1,0 +1,11 @@
+buckets:
+  - name: sigulon-call-recordings
+    location: ASIA-SOUTH1
+    storage_class: STANDARD
+    lifecycle_rule:
+      action: Delete
+      condition:
+        age_days: 90
+  - name: sigulon-call-transcripts
+    location: ASIA-SOUTH1
+    storage_class: STANDARD

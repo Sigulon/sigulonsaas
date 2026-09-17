@@ -1,0 +1,98 @@
+# Sigulon local stack: Redis + voice runtime + campaign worker.
+#
+# The web app runs on the host (`npm run dev`) with `REDIS_URL` pointing at
+# the Redis below; the two Python services run here so Plivo webhooks,
+# queueing, and audio behave like production. First boot:
+#
+#   cp .env.example .env.local            # web (host)
+#   cp voice-runtime/.env.example voice-runtime/.env
+#   cp services/campaign-worker/.env.example services/campaign-worker/.env
+#   docker compose up --build
+#
+# Plivo must reach BOTH the web app (answer/hangup webhooks) and the
+# runtime (wss stream). On localhost use a tunnel (ngrok/cloudflared) and
+# set the public bases in the three env files accordingly.
+
+services:
+  mongodb:
+    image: mongo:8
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - sigulon-mongodb:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Transactions protect campaign creation and the immutable credit ledger.
+  # A standalone MongoDB cannot provide that guarantee, even for local work.
+  mongo-init:
+    image: mongo:8
+    depends_on:
+      mongodb:
+        condition: service_started
+    restart: "no"
+    command:
+      - /bin/sh
+      - -ec
+      - >-
+        until mongosh --host mongodb:27017 --quiet --eval
+        'try { rs.status().ok } catch (e) { rs.initiate({_id:"rs0", members:[{_id:0, host:"mongodb:27017"}]}); 1 }';
+        do sleep 1; done;
+        until mongosh --host mongodb:27017 --quiet --eval
+        'db.hello().isWritablePrimary || quit(1)'; do sleep 1; done
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - sigulon-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  voice-runtime:
+    build: ./voice-runtime
+    env_file:
+      - path: ./voice-runtime/.env
+        required: false
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      MONGODB_URI: mongodb://mongodb:27017/sigulon?replicaSet=rs0
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo-init:
+        condition: service_completed_successfully
+    # Telephony sockets: never scale this to zero; raise proxy timeouts.
+
+  campaign-worker:
+    build: ./services/campaign-worker
+    env_file:
+      - path: ./services/campaign-worker/.env
+        required: false
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      MONGODB_URI: mongodb://mongodb:27017/sigulon?replicaSet=rs0
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo-init:
+        condition: service_completed_successfully
+    # Scale dial throughput with replicas; governors keep N workers correct.
+    deploy:
+      replicas: 1
+
+volumes:
+  sigulon-mongodb:
+  sigulon-redis:

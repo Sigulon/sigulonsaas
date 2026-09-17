@@ -1,0 +1,67 @@
+# Cloud Run voice plane. One WebSocket request is admitted per container to
+# protect real-time audio latency; Cloud Run adds containers as calls arrive.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: sigulon-voice-runtime
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "50"
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/sessionAffinity: "true"
+        run.googleapis.com/startup-cpu-boost: "true"
+        run.googleapis.com/network-interfaces: '[{"network":"__NETWORK__","subnetwork":"__SUBNET__"}]'
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+    spec:
+      # A telephone stream is a long-lived request. Start at one active stream
+      # per 2 vCPU container and tune only after the load-test plan passes.
+      containerConcurrency: 1
+      timeoutSeconds: 3600
+      serviceAccountName: sigulon-run@__PROJECT_ID__.iam.gserviceaccount.com
+      containers:
+        - image: __RUNTIME_IMAGE__
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          env:
+            - name: CARTESIA_API_KEY
+              valueFrom: { secretKeyRef: { name: sigulon-cartesia-api-key, key: latest } }
+            - name: OPENROUTER_API_KEY
+              valueFrom: { secretKeyRef: { name: sigulon-openrouter-api-key, key: latest } }
+            - name: PLIVO_AUTH_ID
+              valueFrom: { secretKeyRef: { name: sigulon-plivo-auth-id, key: latest } }
+            - name: PLIVO_AUTH_TOKEN
+              valueFrom: { secretKeyRef: { name: sigulon-plivo-auth-token, key: latest } }
+            - name: REDIS_URL
+              valueFrom: { secretKeyRef: { name: sigulon-redis-url, key: latest } }
+            - name: MONGODB_URI
+              valueFrom: { secretKeyRef: { name: sigulon-mongodb-uri, key: latest } }
+            - name: INTERNAL_API_SECRET
+              valueFrom: { secretKeyRef: { name: sigulon-internal-api-secret, key: latest } }
+            - name: MONGODB_DATABASE
+              value: sigulon
+            - name: PUBLIC_WEB_URL
+              value: __WEB_URL__
+            - name: INTERNAL_API_BASE_URL
+              value: __WEB_URL__
+            - name: CALL_CONFIG_TTL_SECS
+              value: "3600"
+            - name: ACTIVE_CALLS_KEY_TTL_SECS
+              value: "7200"
+            - name: VOICE_SESSION_TTL_SECS
+              value: "7200"
+            - name: CALL_FINALIZED_TTL_SECS
+              value: "86400"
+          startupProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            periodSeconds: 10
+            failureThreshold: 18
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            periodSeconds: 30

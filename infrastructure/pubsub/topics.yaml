@@ -1,0 +1,7 @@
+topics:
+  - name: sigulon.call.events
+    schema: call-event-v1
+  - name: sigulon.billing.usage
+    schema: billing-usage-v1
+  - name: sigulon.campaign.dispatches
+    schema: campaign-dispatch-v1

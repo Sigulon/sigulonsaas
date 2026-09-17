@@ -1,0 +1,6 @@
+# Sigulon campaign worker — install with uv (uses pyproject.toml) or pip:
+#   uv sync            (recommended)
+#   pip install -r requirements.txt
+redis==8.1.0
+pymongo==4.18.1
+httpx==0.28.1

@@ -1,0 +1,78 @@
+# Cloud Run control plane. `deploy.ps1` replaces the __...__ tokens before
+# applying this manifest; do not place secret values in this file.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: sigulon-web
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "20"
+        run.googleapis.com/startup-cpu-boost: "true"
+        # Direct VPC egress is required for private Memorystore. Public AI and
+        # MongoDB Atlas traffic keeps its normal public route.
+        run.googleapis.com/network-interfaces: '[{"network":"__NETWORK__","subnetwork":"__SUBNET__"}]'
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 60
+      serviceAccountName: sigulon-run@__PROJECT_ID__.iam.gserviceaccount.com
+      containers:
+        - image: __WEB_IMAGE__
+          ports:
+            - containerPort: 3000
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: MONGODB_URI
+              valueFrom: { secretKeyRef: { name: sigulon-mongodb-uri, key: latest } }
+            - name: REDIS_URL
+              valueFrom: { secretKeyRef: { name: sigulon-redis-url, key: latest } }
+            - name: INTERNAL_API_SECRET
+              valueFrom: { secretKeyRef: { name: sigulon-internal-api-secret, key: latest } }
+            - name: ENCRYPTION_SECRET
+              valueFrom: { secretKeyRef: { name: sigulon-encryption-secret, key: latest } }
+            - name: PLIVO_AUTH_ID
+              valueFrom: { secretKeyRef: { name: sigulon-plivo-auth-id, key: latest } }
+            - name: PLIVO_AUTH_TOKEN
+              valueFrom: { secretKeyRef: { name: sigulon-plivo-auth-token, key: latest } }
+            - name: CARTESIA_API_KEY
+              valueFrom: { secretKeyRef: { name: sigulon-cartesia-api-key, key: latest } }
+            - name: CARTESIA_WEBHOOK_SECRET
+              valueFrom: { secretKeyRef: { name: sigulon-cartesia-webhook-secret, key: latest } }
+            - name: OPENROUTER_API_KEY
+              valueFrom: { secretKeyRef: { name: sigulon-openrouter-api-key, key: latest } }
+            - name: SMTP_HOST
+              valueFrom: { secretKeyRef: { name: sigulon-smtp-host, key: latest } }
+            - name: SMTP_USER
+              valueFrom: { secretKeyRef: { name: sigulon-smtp-user, key: latest } }
+            - name: SMTP_PASSWORD
+              valueFrom: { secretKeyRef: { name: sigulon-smtp-password, key: latest } }
+            - name: EMAIL_FROM
+              valueFrom: { secretKeyRef: { name: sigulon-email-from, key: latest } }
+            - name: VOICE_RUNTIME_URL
+              value: __RUNTIME_URL__
+            - name: PUBLIC_WEB_URL
+              value: __WEB_URL__
+            - name: APP_URL
+              value: __WEB_URL__
+            - name: SMTP_PORT
+              value: "587"
+            - name: SMTP_SECURE
+              value: "false"
+            - name: CALL_CONFIG_TTL_SECS
+              value: "3600"
+            - name: CREDITS_PER_MINUTE
+              value: "0.25"
+            - name: CREDITS_MIN_MINUTES
+              value: "1"
+            - name: CREDITS_RESERVE_MINUTES
+              value: "20"
+            - name: CARTESIA_BASE_URL
+              value: https://api.cartesia.ai

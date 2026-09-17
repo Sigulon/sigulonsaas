@@ -1,0 +1,12 @@
+{
+  "name": "@sigulon/database",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "dependencies": {
+    "@sigulon/shared-types": "*",
+    "mongodb": "^7.6.0",
+    "mongoose": "^9.10.0"
+  }
+}

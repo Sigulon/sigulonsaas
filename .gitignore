@@ -29,6 +29,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
+
+# Python generated files
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -39,3 +46,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local tunnel binaries / logs
+cloudflared.exe
+cloudflared*
+
+# local call recordings (regenerated at runtime)
+recordings/
+voice-runtime/recordings/
+*.wav

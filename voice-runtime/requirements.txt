@@ -1,0 +1,29 @@
+# Sigulon voice runtime — Pipecat + Cartesia + OpenRouter Gemini + Plivo.
+# Verified against pipecat-ai 1.8.1 (Python >= 3.11). Install with:
+#   uv sync            (uses pyproject.toml)
+#   # or
+#   pip install -r requirements.txt
+
+# Core framework + service extras:
+#   websocket  -> FastAPIWebsocketTransport (Plivo telephony socket)
+#   cartesia   -> Cartesia STT + TTS services
+#   openai     -> OpenAI-compatible client used by OpenRouter
+#   silero     -> Silero VAD via onnxruntime (turn detection / barge-in)
+pipecat-ai[websocket,cartesia,silero,openai]==1.8.1
+
+# Web server (telephony WebSocket endpoint)
+fastapi==0.141.1
+uvicorn==0.52.4
+websockets==15.0.1
+
+# Session/config store + persistence
+redis==8.1.0
+pymongo==4.18.1
+
+# Utilities (direct imports in this service)
+pydantic==2.13.5
+httpx==0.28.1
+aiohttp==3.14.3
+loguru==0.7.3
+python-dotenv==1.2.3
+google-cloud-storage>=2.14.0

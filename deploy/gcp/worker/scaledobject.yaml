@@ -1,0 +1,43 @@
+# KEDA creates the HPA for this deployment. At least one worker remains alive
+# for delayed retries and recovery sweeps; queued campaign contacts scale it up.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: sigulon-campaign-worker
+  namespace: sigulon
+spec:
+  scaleTargetRef:
+    name: sigulon-campaign-worker
+  pollingInterval: 5
+  cooldownPeriod: 300
+  initialCooldownPeriod: 60
+  minReplicaCount: 1
+  maxReplicaCount: 20
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          selectPolicy: Max
+          policies:
+            - type: Pods
+              value: 4
+              periodSeconds: 15
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          selectPolicy: Max
+          policies:
+            - type: Percent
+              value: 50
+              periodSeconds: 60
+  triggers:
+    - type: redis
+      metadata:
+        addressFromEnv: KEDA_REDIS_ADDRESS
+        passwordFromEnv: KEDA_REDIS_PASSWORD
+        listName: sigulon:campaign:queue
+        # Target backlog per worker. The worker's own global, campaign and
+        # phone-number governors remain the final limit on call attempts.
+        listLength: "2"
+        activationListLength: "1"
+        databaseIndex: "0"

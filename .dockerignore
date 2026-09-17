@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+dist/
+coverage/
+.git/
+.github/
+.env*
+!.env.example
+*.log
+.DS_Store
+voice-runtime/.venv/
+voice-runtime/__pycache__/
+voice-runtime/**/__pycache__/
+services/campaign-worker/.venv/
+services/campaign-worker/**/__pycache__/

@@ -1,0 +1,49 @@
+# Cloud Run: sigulon-voice-runtime (telephony WebSockets).
+# One deployment serves all tenants. Telephony sockets must NOT scale to
+# zero: minScale 1 keeps a warm instance, cpu-throttling off keeps audio
+# flowing between requests, and the 3600s timeout outlives max call caps.
+# Replace REGION/PROJECT/REPO/TAG + every VALUE before applying.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: sigulon-voice-runtime
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "10"
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/sessionAffinity: "true"
+    spec:
+      timeoutSeconds: 3600
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT/REPO/sigulon-runtime:TAG
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          env:
+            - name: CARTESIA_API_KEY
+              valueFrom: { secretKeyRef: { name: sigulon-secrets, key: cartesia-api-key } }
+            - name: OPENROUTER_API_KEY
+              valueFrom: { secretKeyRef: { name: sigulon-secrets, key: openrouter-api-key } }
+            - name: REDIS_URL
+              valueFrom: { secretKeyRef: { name: sigulon-secrets, key: redis-url } }
+            - name: MONGODB_URI
+              valueFrom: { secretKeyRef: { name: sigulon-secrets, key: mongodb-uri } }
+            - name: INTERNAL_API_SECRET
+              valueFrom: { secretKeyRef: { name: sigulon-secrets, key: internal-api-secret } }
+            - name: INTERNAL_API_BASE_URL
+              value: https://your-web-host
+            - name: PUBLIC_WEB_URL
+              value: https://your-web-host
+          startupProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            periodSeconds: 30
