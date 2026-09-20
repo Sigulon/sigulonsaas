@@ -85,8 +85,8 @@ export function CallDetailSheet({ call, isOpen, onClose }: CallDetailSheetProps)
 
         {/* Telephony Metadata */}
         <div className="rounded-xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-950 space-y-3">
-          <h4 className="text-xs font-semibold text-stone-900 dark:text-white uppercase tracking-wider">
-            Telephony Information
+          <h4 className="text-xs font-semibold text-stone-900 dark:text-white">
+            Telephony information
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div>
@@ -121,9 +121,9 @@ export function CallDetailSheet({ call, isOpen, onClose }: CallDetailSheetProps)
         {/* Call Audio Recording Playback */}
         <div className="rounded-xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-950 space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-stone-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+            <h4 className="text-xs font-semibold text-stone-900 dark:text-white flex items-center gap-1.5">
               <Volume2 className="h-4 w-4 text-violet-600" />
-              Call Audio Recording
+              Call audio recording
             </h4>
             {call.recording_url && (
               <span className="text-[10px] text-emerald-600 font-medium">Call Audio</span>
@@ -149,8 +149,8 @@ export function CallDetailSheet({ call, isOpen, onClose }: CallDetailSheetProps)
         {/* Transcript Conversation Stream */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-stone-900 dark:text-white uppercase tracking-wider">
-              Live Transcript ({call.transcript?.length || 0} turns)
+            <h4 className="text-xs font-semibold text-stone-900 dark:text-white">
+              Live transcript ({call.transcript?.length || 0} turns)
             </h4>
             <span className="text-[11px] text-stone-400">Auto-transcribed by the voice runtime</span>
           </div>
