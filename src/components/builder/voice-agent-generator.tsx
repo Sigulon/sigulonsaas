@@ -198,7 +198,7 @@ export function VoiceAgentGenerator() {
           </div>
         </div>
         <div className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-6">
-          {["Call type", "Language", "Business", "Call goal", "Knowledge", "Preview"].map((label, index) => <div key={label} className={`rounded-lg px-2 py-2 text-center text-[11px] font-medium ${step === index + 1 ? "bg-violet-600 text-white" : step > index + 1 ? "bg-white/15 text-violet-100" : "bg-white/10 text-violet-100/60"}`}>{step > index + 1 ? <Check className="mx-auto h-3.5 w-3.5" /> : index + 1}. {label}</div>)}
+          {["Call type", "Language", "Business", "Call goal", "Knowledge", "Preview"].map((label, index) => <div key={label} className={`flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-center text-[11px] font-medium ${step === index + 1 ? "bg-violet-600 text-white" : step > index + 1 ? "bg-white/15 text-violet-100" : "bg-white/10 text-violet-100/60"}`}>{step > index + 1 ? <><Check className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{label}</span></> : <span className="truncate">{index + 1}. {label}</span>}</div>)}
         </div>
       </div>
 
