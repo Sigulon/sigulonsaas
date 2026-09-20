@@ -95,11 +95,11 @@ export default function BillingPage() {
     <div className="space-y-6 max-w-5xl">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <CreditCard className="h-6 w-6 text-indigo-600" />
+        <h1 className="text-2xl font-bold text-stone-900 dark:text-white flex items-center gap-2">
+          <CreditCard className="h-6 w-6 text-violet-600" />
           Billing & Voice Credits
         </h1>
-        <p className="text-xs text-slate-500 mt-1">
+        <p className="text-xs text-stone-500 mt-1">
           Live ledger balance, held call estimates, and recent credit activity.
         </p>
       </div>
@@ -113,20 +113,20 @@ export default function BillingPage() {
       )}
 
       {/* Current Balance Card */}
-      <Card className="border-indigo-100 bg-gradient-to-br from-indigo-50/60 to-white dark:border-indigo-900/40 dark:bg-slate-900 shadow-xs">
+      <Card className="border-violet-100 bg-gradient-to-br from-violet-50/60 to-white dark:border-violet-900/40 dark:bg-stone-900 shadow-[0_8px_30px_rgba(30,20,60,0.08)]">
         <CardContent className="p-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+              <span className="text-xs font-semibold text-violet-600 dark:text-violet-400">
                 Available Voice Balance
               </span>
               <div className="mt-1 flex items-baseline gap-2">
-                <span className="text-4xl font-extrabold text-slate-900 dark:text-white">
+                <span className="text-4xl font-extrabold text-stone-900 dark:text-white">
                   {summary ? summary.available.toFixed(2) : "—"}
                 </span>
-                <span className="text-sm font-semibold text-slate-500">Credits</span>
+                <span className="text-sm font-semibold text-stone-500">Credits</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-stone-500 mt-1">
                 {summary ? (
                   <>
                     Balance {summary.balance.toFixed(2)}
@@ -152,7 +152,7 @@ export default function BillingPage() {
 
       {/* Credit Packs (informational — purchases are operator-handled) */}
       <div className="space-y-4">
-        <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+        <h2 className="text-base font-bold text-stone-900 dark:text-white flex items-center gap-2">
           <Zap className="h-4 w-4 text-amber-500" />
           Recharge Credit Packages
         </h2>
@@ -163,12 +163,12 @@ export default function BillingPage() {
               key={pkg.id}
               className={`relative flex flex-col justify-between transition-all ${
                 pkg.popular
-                  ? "border-indigo-500 shadow-md ring-2 ring-indigo-500/20"
-                  : "border-slate-200 dark:border-slate-800"
+                  ? "border-violet-500 shadow-md ring-2 ring-violet-500/20"
+                  : "border-stone-200 dark:border-stone-800"
               }`}
             >
               {pkg.popular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-indigo-600 px-3 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#C9952B] px-3 py-0.5 text-[10px] font-bold text-white tracking-wide">
                   Most Popular
                 </div>
               )}
@@ -176,16 +176,16 @@ export default function BillingPage() {
               <CardHeader>
                 <CardTitle className="text-base">{pkg.name}</CardTitle>
                 <div className="mt-2 flex items-baseline gap-1">
-                  <span className="text-3xl font-bold text-slate-900 dark:text-white">
+                  <span className="text-3xl font-bold text-stone-900 dark:text-white">
                     {pkg.price}
                   </span>
-                  <span className="text-xs text-slate-400">one-time</span>
+                  <span className="text-xs text-stone-400">one-time</span>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">{pkg.description}</p>
+                <p className="text-xs text-stone-500 mt-1">{pkg.description}</p>
               </CardHeader>
 
               <CardContent className="space-y-2 text-xs">
-                <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                <div className="flex items-center gap-2 text-stone-700 dark:text-stone-300">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
                   <span>
                     <strong>{pkg.credits} Calling Credits</strong>
@@ -197,7 +197,7 @@ export default function BillingPage() {
                 <Button disabled className="w-full text-xs font-semibold">
                   Contact sales to recharge
                 </Button>
-                <span className="text-[10px] text-slate-400 text-center">
+                <span className="text-[10px] text-stone-400 text-center">
                   Self-serve checkout lands with billing automation.
                 </span>
               </CardFooter>
@@ -208,12 +208,12 @@ export default function BillingPage() {
 
       {/* Ledger History */}
       <div className="space-y-3">
-        <h2 className="text-base font-bold text-slate-900 dark:text-white">
+        <h2 className="text-base font-bold text-stone-900 dark:text-white">
           Recent Credit Activity
         </h2>
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+        <div className="overflow-hidden rounded-xl border border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-950">
           <table className="w-full text-left text-xs">
-            <thead className="border-b border-slate-200 bg-slate-50 p-2 font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+            <thead className="border-b border-stone-200 bg-stone-50 p-2 font-semibold text-stone-500 dark:border-stone-800 dark:bg-stone-900">
               <tr>
                 <th className="p-3">Date</th>
                 <th className="p-3">Description</th>
@@ -221,17 +221,17 @@ export default function BillingPage() {
                 <th className="p-3 text-right">Amount</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
               {!summary && (
                 <tr>
-                  <td colSpan={4} className="p-3 text-slate-500">
+                  <td colSpan={4} className="p-3 text-stone-500">
                     Loading…
                   </td>
                 </tr>
               )}
               {summary && summary.recent.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-3 text-slate-500">
+                  <td colSpan={4} className="p-3 text-stone-500">
                     No credit activity yet — answered calls hold an estimate here,
                     settled on completion.
                   </td>
@@ -239,11 +239,11 @@ export default function BillingPage() {
               )}
               {(summary?.recent ?? []).map((entry) => (
                 <tr key={entry.id}>
-                  <td className="p-3 text-slate-500">{formatDate(entry.created_at)}</td>
-                  <td className="p-3 font-medium text-slate-800 dark:text-slate-200">
+                  <td className="p-3 text-stone-500">{formatDate(entry.created_at)}</td>
+                  <td className="p-3 font-medium text-stone-800 dark:text-stone-200">
                     {entry.label}
                   </td>
-                  <td className="p-3 font-mono text-[10px] text-slate-500">
+                  <td className="p-3 font-mono text-[10px] text-stone-500">
                     {entry.call_id ? entry.call_id.slice(0, 8) : "—"}
                   </td>
                   <td

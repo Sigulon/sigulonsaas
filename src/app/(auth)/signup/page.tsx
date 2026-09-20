@@ -52,29 +52,29 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
-      <Card className="w-full max-w-md shadow-xl border-slate-200 dark:border-slate-800">
+    <div className="flex min-h-screen items-center justify-center bg-[#FAF8F5] p-4">
+      <Card className="w-full max-w-md">
         <CardHeader className="text-center pb-4">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 mb-2">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-lg shadow-violet-600/30 mb-2">
             <Radio className="h-6 w-6" />
           </div>
           <CardTitle className="text-xl">Create your Organization</CardTitle>
           <CardDescription className="text-xs">
-            Start automating outbound and inbound voice calls with AI agents
+            Start building your AI calling team — agents, campaigns, and conversations in one workspace.
           </CardDescription>
         </CardHeader>
 
         <CardContent>
           <form onSubmit={handleSignup} className="space-y-4">
             {error && (
-              <div className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-400">
+              <div className="flex items-center gap-2 rounded-xl bg-red-50 p-3 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-400">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
                 Company / Organization Name
               </label>
               <Input
@@ -87,7 +87,7 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
                 Business Email
               </label>
               <Input
@@ -100,7 +100,7 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
                 Password
               </label>
               <Input
@@ -116,7 +116,8 @@ export default function SignupPage() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
+              variant="gold"
+              className="w-full font-medium"
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -125,11 +126,11 @@ export default function SignupPage() {
               )}
             </Button>
 
-            <div className="text-center text-xs text-slate-500 pt-2">
+            <div className="text-center text-xs text-stone-500 pt-2">
               Already have an account?{" "}
               <Link
                 href="/login"
-                className="font-semibold text-indigo-600 hover:underline"
+                className="font-semibold text-violet-600 hover:underline"
               >
                 Sign in
               </Link>

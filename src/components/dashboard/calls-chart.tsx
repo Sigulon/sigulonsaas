@@ -19,20 +19,20 @@ interface CallsChartProps {
 export function CallsChart({ data = [] }: CallsChartProps) {
   if (data.length === 0) {
     return (
-      <Card className="border-slate-200/80 dark:border-slate-800 shadow-xs">
+      <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-4">
           <div>
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <PhoneCall className="h-4 w-4 text-indigo-600" />
-              Outbound Volume & Answered Calls
+              <PhoneCall className="h-4 w-4 text-violet-600" />
+              Call volume & answered calls
             </CardTitle>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Telephony engagement metrics over the last 7 days
+            <p className="text-xs text-stone-500 mt-0.5">
+              Telephony engagement over the last 7 days
             </p>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-64 w-full flex items-center justify-center text-sm text-slate-500">
+          <div className="h-64 w-full flex items-center justify-center text-sm text-stone-500">
             No call activity yet — place or receive a call to see volume here.
           </div>
         </CardContent>
@@ -42,25 +42,25 @@ export function CallsChart({ data = [] }: CallsChartProps) {
   const chartData = data;
 
   return (
-    <Card className="border-slate-200/80 dark:border-slate-800 shadow-xs">
+    <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-4">
         <div>
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <PhoneCall className="h-4 w-4 text-indigo-600" />
-            Outbound Volume & Answered Calls
+            <PhoneCall className="h-4 w-4 text-violet-600" />
+            Call volume & answered calls
           </CardTitle>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Real-time telephony engagement metrics over the last 7 days
+          <p className="text-xs text-stone-500 mt-0.5">
+            Telephony engagement over the last 7 days
           </p>
         </div>
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-indigo-600" />
-            <span className="text-slate-600 dark:text-slate-400">Total Dialed</span>
+            <span className="h-2.5 w-2.5 rounded-full bg-violet-600" />
+            <span className="text-stone-600 dark:text-stone-400">Total dialed</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-            <span className="text-slate-600 dark:text-slate-400">Answered</span>
+            <span className="text-stone-600 dark:text-stone-400">Answered</span>
           </div>
         </div>
       </CardHeader>
@@ -70,21 +70,21 @@ export function CallsChart({ data = [] }: CallsChartProps) {
             <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorCalls" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="colorAnswered" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
                   <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-              <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#64748b" }} />
-              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#64748b" }} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7e5e4" />
+              <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#78716c" }} />
+              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#78716c" }} />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "#0f172a",
-                  borderRadius: "8px",
+                  backgroundColor: "#1e1433",
+                  borderRadius: "12px",
                   border: "none",
                   color: "#fff",
                   fontSize: "12px",
@@ -93,11 +93,11 @@ export function CallsChart({ data = [] }: CallsChartProps) {
               <Area
                 type="monotone"
                 dataKey="calls"
-                stroke="#4f46e5"
+                stroke="#7c3aed"
                 strokeWidth={2}
                 fillOpacity={1}
                 fill="url(#colorCalls)"
-                name="Total Calls"
+                name="Total calls"
               />
               <Area
                 type="monotone"

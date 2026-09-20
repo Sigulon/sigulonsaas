@@ -3,13 +3,38 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #f9fafb;
-  --foreground: #111827;
+  /* Sigulon team-style tokens */
+  --ground: #faf8f5;
+  --ink: #171321;
+  --ink-muted: #6b6478;
+  --violet: #7c3aed;
+  --violet-deep: #5f21c9;
+  --gold: #c9952b;
+  --gold-deep: #a8781f;
+  --plum: #1e1433;
+
+  --background: var(--ground);
+  --foreground: var(--ink);
+
+  --team-shadow: 0 8px 30px rgba(30, 20, 60, 0.08);
+}
+
+.dark {
+  --background: #14101f;
+  --foreground: #f4f1fa;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-ground: var(--ground);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-sigulon: var(--violet);
+  --color-sigulon-deep: var(--violet-deep);
+  --color-gold: var(--gold);
+  --color-gold-deep: var(--gold-deep);
+  --color-plum: var(--plum);
   --font-sans: var(--font-inter-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -18,4 +43,19 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-inter-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Single team-card elevation used across the app */
+.team-card {
+  box-shadow: var(--team-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

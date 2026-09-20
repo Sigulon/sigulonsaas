@@ -49,29 +49,29 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-[#171321]/60 backdrop-blur-xs transition-opacity"
         onClick={onClose}
       />
 
       {/* Modal Box */}
       <div
         className={cn(
-          "relative z-10 w-full rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 dark:border-slate-800 dark:bg-slate-900 animate-in fade-in zoom-in-95 duration-150",
+          "relative z-10 w-full rounded-[20px] bg-white p-6 shadow-2xl border border-stone-200 dark:border-stone-800 dark:bg-stone-900 animate-in fade-in zoom-in-95 duration-150",
           maxWidthClass
         )}
       >
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          className="absolute right-4 top-4 rounded-lg p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-800 dark:hover:text-stone-200"
         >
           <X className="h-5 w-5" />
         </button>
 
         {title && (
           <div className="mb-4">
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">{title}</h2>
+            <h2 className="text-xl font-semibold text-stone-900 dark:text-white">{title}</h2>
             {description && (
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>
+              <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">{description}</p>
             )}
           </div>
         )}
@@ -111,22 +111,22 @@ export function Sheet({ isOpen, onClose, title, description, children }: SheetPr
     <div className="fixed inset-0 z-50 flex justify-end">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-[#171321]/40 backdrop-blur-xs transition-opacity"
         onClick={onClose}
       />
 
       {/* Drawer */}
-      <div className="relative z-10 flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl border-l border-slate-200 dark:border-slate-800 dark:bg-slate-900 animate-in slide-in-from-right duration-200">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
+      <div className="relative z-10 flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl border-l border-stone-200 dark:border-stone-800 dark:bg-stone-900 animate-in slide-in-from-right duration-200">
+        <div className="flex items-center justify-between border-b border-stone-200 px-6 py-4 dark:border-stone-800">
           <div>
-            {title && <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h2>}
+            {title && <h2 className="text-lg font-semibold text-stone-900 dark:text-white">{title}</h2>}
             {description && (
-              <p className="text-xs text-slate-500 dark:text-slate-400">{description}</p>
+              <p className="text-xs text-stone-500 dark:text-stone-400">{description}</p>
             )}
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            className="rounded-lg p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-800 dark:hover:text-stone-200"
           >
             <X className="h-5 w-5" />
           </button>

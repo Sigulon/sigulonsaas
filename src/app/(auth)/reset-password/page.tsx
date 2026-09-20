@@ -41,13 +41,13 @@ function ResetPasswordForm() {
   return (
     <Card className="w-full max-w-md shadow-xl">
       <CardHeader className="text-center">
-        <Radio className="mx-auto mb-2 h-8 w-8 text-indigo-600" />
+        <Radio className="mx-auto mb-2 h-8 w-8 text-violet-600" />
         <CardTitle>Choose a new password</CardTitle>
         <CardDescription>Your existing sessions will be signed out.</CardDescription>
       </CardHeader>
       <CardContent>
         {complete ? (
-          <div className="space-y-4 text-center text-sm"><CheckCircle2 className="mx-auto h-9 w-9 text-emerald-600" /><p>Your password has been reset.</p><Link className="text-indigo-600 hover:underline" href="/login">Sign in</Link></div>
+          <div className="space-y-4 text-center text-sm"><CheckCircle2 className="mx-auto h-9 w-9 text-emerald-600" /><p>Your password has been reset.</p><Link className="text-violet-600 hover:underline" href="/login">Sign in</Link></div>
         ) : (
           <form className="space-y-4" onSubmit={submit}>
             {error && <p className="flex gap-2 rounded-lg bg-red-50 p-3 text-xs text-red-700"><AlertCircle className="h-4 w-4 shrink-0" />{error}</p>}
@@ -62,5 +62,5 @@ function ResetPasswordForm() {
 }
 
 export default function ResetPasswordPage() {
-  return <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4 dark:bg-slate-950"><Suspense fallback={<div className="text-sm text-slate-500">Loading reset link…</div>}><ResetPasswordForm /></Suspense></div>;
+  return <div className="flex min-h-screen items-center justify-center bg-stone-50 p-4 dark:bg-stone-950"><Suspense fallback={<div className="text-sm text-stone-500">Loading reset link…</div>}><ResetPasswordForm /></Suspense></div>;
 }

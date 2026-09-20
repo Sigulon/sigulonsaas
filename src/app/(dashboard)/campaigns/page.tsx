@@ -79,22 +79,37 @@ export default function CampaignsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Megaphone className="h-6 w-6 text-indigo-600" />
-            Outbound Calling Campaigns
+          <h1 className="text-2xl font-bold tracking-tight text-stone-900 dark:text-white flex items-center gap-2">
+            <Megaphone className="h-6 w-6 text-violet-600" />
+            Campaigns
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Dispatch high-volume automated voice campaigns with rate limiting, DNC filtering, and real-time progress.
+          <p className="text-xs text-stone-500 mt-1">
+            Put your team on bulk dialing — rate limited, DNC filtered, with live progress.
           </p>
         </div>
 
         <Button
           onClick={() => setIsWizardOpen(true)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5"
+          variant="gold"
+          className="flex items-center gap-1.5"
         >
           <Plus className="h-4 w-4" />
           Create Bulk Campaign
         </Button>
+      </div>
+
+      {/* Explainer header: upload, auto-dial, live analytics */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          { step: "Upload", detail: "Drop a CSV of names and numbers." },
+          { step: "Auto-dial", detail: "Your agent calls the list for you." },
+          { step: "Live analytics", detail: "Watch progress and outcomes here." },
+        ].map((item) => (
+          <div key={item.step} className="rounded-2xl border border-stone-200/70 bg-white p-4 dark:border-stone-800 dark:bg-stone-950">
+            <span className="block text-sm font-semibold text-stone-900 dark:text-white">{item.step}</span>
+            <span className="mt-0.5 block text-xs text-stone-500">{item.detail}</span>
+          </div>
+        ))}
       </div>
 
       {/* Campaigns Grid */}
@@ -104,22 +119,22 @@ export default function CampaignsPage() {
         </div>
       )}
       {loading ? (
-        <div className="py-20 flex flex-col items-center justify-center text-slate-400">
-          <Loader2 className="h-8 w-8 animate-spin text-indigo-600 mb-2" />
+        <div className="py-20 flex flex-col items-center justify-center text-stone-400">
+          <Loader2 className="h-8 w-8 animate-spin text-violet-600 mb-2" />
           <span className="text-sm">Loading campaigns...</span>
         </div>
       ) : campaigns.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 p-12 text-center">
-          <Megaphone className="mx-auto h-12 w-12 text-slate-400" />
-          <h3 className="mt-3 text-base font-semibold text-slate-900 dark:text-white">
-            No Outbound Campaigns Yet
+        <div className="rounded-[20px] border-2 border-dashed border-stone-200 dark:border-stone-800 p-12 text-center">
+          <Megaphone className="mx-auto h-12 w-12 text-stone-400" />
+          <h3 className="mt-3 text-base font-semibold text-stone-900 dark:text-white">
+            No campaigns yet
           </h3>
-          <p className="mt-1 text-xs text-slate-500 max-w-sm mx-auto">
-            Upload your contacts CSV to launch automated bulk calling in Indian languages.
+          <p className="mt-1 text-xs text-stone-500 max-w-sm mx-auto">
+            Upload a contacts CSV and your team starts dialing — DNC filtered, automatically.
           </p>
           <Button
             onClick={() => setIsWizardOpen(true)}
-            className="mt-4 bg-indigo-600 hover:bg-indigo-700"
+            className="mt-4"
           >
             <Plus className="h-4 w-4 mr-1.5" />
             Create First Campaign
@@ -137,15 +152,15 @@ export default function CampaignsPage() {
             const isProcessing = actionInProgress === camp.id;
 
             return (
-              <Card key={camp.id} className="flex flex-col justify-between shadow-xs">
+              <Card key={camp.id} className="flex flex-col justify-between shadow-[0_8px_30px_rgba(30,20,60,0.08)]">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="font-semibold text-base text-slate-900 dark:text-white">
+                      <h3 className="font-semibold text-base text-stone-900 dark:text-white">
                         {camp.name}
                       </h3>
-                      <span className="text-xs text-slate-500">
-                        Assigned Agent: <strong className="text-slate-800 dark:text-slate-200">{camp.agent?.name || "Voice Agent"}</strong>
+                      <span className="text-xs text-stone-500">
+                        Assigned Agent: <strong className="text-stone-800 dark:text-stone-200">{camp.agent?.name || (camp as Campaign & { voice_agents?: { name?: string } }).voice_agents?.name || "Voice Agent"}</strong>
                       </span>
                     </div>
 
@@ -167,23 +182,23 @@ export default function CampaignsPage() {
                   {/* Progress Bar */}
                   <div>
                     <div className="flex items-center justify-between text-xs mb-1.5">
-                      <span className="text-slate-500 flex items-center gap-1">
-                        <Users className="h-3.5 w-3.5 text-slate-400" />
+                      <span className="text-stone-500 flex items-center gap-1">
+                        <Users className="h-3.5 w-3.5 text-stone-400" />
                         Calls Completed
                       </span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      <span className="font-semibold text-stone-800 dark:text-stone-200">
                         {camp.calls_completed} / {camp.total_contacts} ({pct}%)
                       </span>
                     </div>
-                    <div className="h-2.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    <div className="h-2.5 w-full rounded-full bg-stone-100 dark:bg-stone-800 overflow-hidden">
                       <div
-                        className="h-full bg-gradient-to-r from-indigo-600 to-emerald-500 transition-all duration-500"
+                        className="h-full bg-gradient-to-r from-violet-600 to-emerald-500 transition-all duration-500"
                         style={{ width: `${pct}%` }}
                       />
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                  <div className="flex items-center justify-between text-xs text-stone-400 pt-1">
                     <span className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
                       Created {new Date(camp.created_at).toLocaleDateString()}
@@ -192,8 +207,8 @@ export default function CampaignsPage() {
                   </div>
                 </CardContent>
 
-                <CardFooter className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <span className="text-xs font-mono text-slate-400">
+                <CardFooter className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between">
+                  <span className="text-xs font-mono text-stone-400">
                     ID: {camp.id.slice(0, 8)}
                   </span>
 
@@ -202,7 +217,7 @@ export default function CampaignsPage() {
                       size="sm"
                       onClick={() => handleStartBatch(camp.id)}
                       disabled={isProcessing}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5"
+                      className="bg-violet-600 hover:bg-violet-700 text-white flex items-center gap-1.5"
                     >
                       {isProcessing ? (
                         <>

@@ -34,10 +34,10 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4 dark:bg-slate-950">
+    <div className="flex min-h-screen items-center justify-center bg-stone-50 p-4 dark:bg-stone-950">
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="text-center">
-          <Radio className="mx-auto mb-2 h-8 w-8 text-indigo-600" />
+          <Radio className="mx-auto mb-2 h-8 w-8 text-violet-600" />
           <CardTitle>Reset your password</CardTitle>
           <CardDescription>Enter your account email and we&apos;ll send a reset link.</CardDescription>
         </CardHeader>
@@ -46,7 +46,7 @@ export default function ForgotPasswordPage() {
             <div className="space-y-4 text-center text-sm">
               <CheckCircle2 className="mx-auto h-9 w-9 text-emerald-600" />
               <p>If an account exists for that email, a reset link has been sent.</p>
-              <Link className="text-indigo-600 hover:underline" href="/login">Back to sign in</Link>
+              <Link className="text-violet-600 hover:underline" href="/login">Back to sign in</Link>
             </div>
           ) : (
             <form className="space-y-4" onSubmit={submit}>
@@ -55,7 +55,7 @@ export default function ForgotPasswordPage() {
               <Button className="w-full" disabled={loading} type="submit">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send reset link"}
               </Button>
-              <p className="text-center text-xs text-slate-500"><Link className="text-indigo-600 hover:underline" href="/login">Back to sign in</Link></p>
+              <p className="text-center text-xs text-stone-500"><Link className="text-violet-600 hover:underline" href="/login">Back to sign in</Link></p>
             </form>
           )}
         </CardContent>

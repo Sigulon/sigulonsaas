@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Phone,
   Plus,
@@ -48,6 +49,15 @@ interface TelephonyStatus {
 }
 
 export default function PhoneNumbersPage() {
+  return (
+    <Suspense fallback={<div className="text-sm text-stone-500">Loading numbers…</div>}>
+      <PhoneNumbersContent />
+    </Suspense>
+  );
+}
+
+/** Reads the inbound filter preset; split out so the page can suspend it during prerender. */
+function PhoneNumbersContent() {
   const [numbers, setNumbers] = useState<PhoneNumberItem[]>([]);
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [telephonyStatus, setTelephonyStatus] = useState<TelephonyStatus | null>(null);
@@ -71,6 +81,13 @@ export default function PhoneNumbersPage() {
 
   // Copy helper
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+
+  // Inbound preset: sidebar "Inbound" links here with ?direction=inbound
+  const searchParams = useSearchParams();
+  const inboundOnly = searchParams.get("direction") === "inbound";
+  const visibleNumbers = inboundOnly
+    ? numbers.filter((item) => item.direction === "inbound" || item.direction === "both")
+    : numbers;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -244,12 +261,12 @@ export default function PhoneNumbersPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
-            <Radio className="h-6 w-6 text-indigo-600" />
-            Telephony & Phone Numbers
+          <h1 className="text-2xl font-bold text-stone-900 dark:text-white flex items-center gap-2.5">
+            <Radio className="h-6 w-6 text-violet-600" />
+            Numbers
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Configure your Plivo carrier account, manage inbound/outbound phone numbers, and attach them to your AI Voice Agents.
+          <p className="text-xs text-stone-500 mt-1">
+            Your team&apos;s phone lines — connect Plivo numbers and attach them to agents for inbound and outbound calling.
           </p>
         </div>
 
@@ -268,7 +285,7 @@ export default function PhoneNumbersPage() {
           <Button
             size="sm"
             onClick={() => setIsAddModalOpen(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs flex items-center gap-1.5"
+            variant="gold" className="text-xs flex items-center gap-1.5"
           >
             <Plus className="h-4 w-4" />
             Register Plivo Number
@@ -283,14 +300,14 @@ export default function PhoneNumbersPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-950 dark:text-violet-400">
                   <Key className="h-4 w-4" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  <h2 className="text-sm font-semibold text-stone-900 dark:text-white">
                     Plivo Carrier Credentials (BYOC)
                   </h2>
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[11px] text-stone-400">
                     Bring Your Own Carrier credentials for direct telephony routing
                   </span>
                 </div>
@@ -330,7 +347,7 @@ export default function PhoneNumbersPage() {
 
             <form onSubmit={handleSaveCredentials} className="space-y-3">
               <div>
-                <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block font-medium text-stone-700 dark:text-stone-300 mb-1">
                   Plivo Auth ID (e.g. MAMW...)
                 </label>
                 <Input
@@ -344,7 +361,7 @@ export default function PhoneNumbersPage() {
               </div>
 
               <div>
-                <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block font-medium text-stone-700 dark:text-stone-300 mb-1">
                   Plivo Auth Token
                 </label>
                 <Input
@@ -391,7 +408,7 @@ export default function PhoneNumbersPage() {
                   type="submit"
                   size="sm"
                   disabled={savingCreds || testingCreds || !authId || !authToken}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold"
+                  className="bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold"
                 >
                   {savingCreds ? (
                     <>
@@ -411,34 +428,34 @@ export default function PhoneNumbersPage() {
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-950 dark:text-violet-400">
                 <Globe className="h-4 w-4" />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+                <h2 className="text-sm font-semibold text-stone-900 dark:text-white">
                   Plivo Console Webhook Setup
                 </h2>
-                <span className="text-[11px] text-slate-400">
+                <span className="text-[11px] text-stone-400">
                   Copy these webhook URLs into your Plivo Voice XML Application
                 </span>
               </div>
             </div>
           </CardHeader>
 
-          <CardContent className="space-y-3.5 text-xs text-slate-600 dark:text-slate-300">
+          <CardContent className="space-y-3.5 text-xs text-stone-600 dark:text-stone-300">
             <p>
               In your <strong>Plivo Console &gt; Voice &gt; Applications</strong>, create an application and configure the primary answer URL:
             </p>
 
             {/* Inbound URL */}
-            <div className="rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900 p-3">
+            <div className="rounded-lg border border-stone-200 bg-stone-50 dark:border-stone-800 dark:bg-stone-900 p-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                <span className="text-[11px] font-semibold text-stone-700 dark:text-stone-300">
                   Primary Answer URL (POST):
                 </span>
                 <button
                   onClick={() => copyToClipboard(inboundWebhookUrl)}
-                  className="text-indigo-600 hover:text-indigo-700 flex items-center gap-1 text-[11px]"
+                  className="text-violet-600 hover:text-violet-700 flex items-center gap-1 text-[11px]"
                 >
                   {copiedUrl === inboundWebhookUrl ? (
                     <>
@@ -453,20 +470,20 @@ export default function PhoneNumbersPage() {
                   )}
                 </button>
               </div>
-              <code className="text-[11px] font-mono text-indigo-700 dark:text-indigo-400 break-all block">
+              <code className="text-[11px] font-mono text-violet-700 dark:text-violet-400 break-all block">
                 {inboundWebhookUrl}
               </code>
             </div>
 
             {/* Fallback URL */}
-            <div className="rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900 p-3">
+            <div className="rounded-lg border border-stone-200 bg-stone-50 dark:border-stone-800 dark:bg-stone-900 p-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                <span className="text-[11px] font-semibold text-stone-700 dark:text-stone-300">
                   Fallback URL (POST):
                 </span>
                 <button
                   onClick={() => copyToClipboard(fallbackWebhookUrl)}
-                  className="text-indigo-600 hover:text-indigo-700 flex items-center gap-1 text-[11px]"
+                  className="text-violet-600 hover:text-violet-700 flex items-center gap-1 text-[11px]"
                 >
                   {copiedUrl === fallbackWebhookUrl ? (
                     <>
@@ -481,7 +498,7 @@ export default function PhoneNumbersPage() {
                   )}
                 </button>
               </div>
-              <code className="text-[11px] font-mono text-indigo-700 dark:text-indigo-400 break-all block">
+              <code className="text-[11px] font-mono text-violet-700 dark:text-violet-400 break-all block">
                 {fallbackWebhookUrl}
               </code>
             </div>
@@ -491,61 +508,79 @@ export default function PhoneNumbersPage() {
                 href="https://console.plivo.com/voice/applications/"
                 target="_blank"
                 rel="noreferrer"
-                className="text-indigo-600 hover:underline inline-flex items-center gap-1 text-xs font-semibold"
+                className="text-violet-600 hover:underline inline-flex items-center gap-1 text-xs font-semibold"
               >
                 Open Plivo Voice Console
                 <ExternalLink className="h-3 w-3" />
               </a>
-              <span className="text-[11px] text-slate-400">Method: POST</span>
+              <span className="text-[11px] text-stone-400">Method: POST</span>
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {inboundOnly && (
+        <div className="flex items-center justify-between rounded-[20px] border border-violet-200 bg-violet-50 px-4 py-3 text-sm dark:border-violet-900 dark:bg-violet-950/40">
+          <span className="text-violet-900 dark:text-violet-100">
+            Showing <strong>inbound-ready</strong> numbers — lines that can receive customer calls.
+          </span>
+          <Badge variant="default">Inbound filter</Badge>
+        </div>
+      )}
+
+      {/* DNC compliance card */}
+      <div className="rounded-[20px] border border-stone-200/70 bg-white p-5 dark:border-stone-800 dark:bg-stone-950">
+        <h2 className="text-sm font-semibold text-stone-900 dark:text-white">Calling compliance</h2>
+        <p className="mt-1 text-xs leading-relaxed text-stone-500">
+          Outbound dials are filtered against your Do Not Call (DNC) list before dispatch.
+          Manage blocked contacts on the <a href="/contacts" className="font-semibold text-violet-600 hover:underline">Leads</a> page.
+        </p>
       </div>
 
       {/* Phone Numbers Table */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+            <h2 className="text-lg font-bold text-stone-900 dark:text-white">
               Connected Telephony Numbers
             </h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-stone-500">
               Numbers linked to this organization with their active agent routing assignments.
             </p>
           </div>
-          <span className="text-xs font-medium text-slate-500">
-            {numbers.length} {numbers.length === 1 ? "Number" : "Numbers"} Registered
+          <span className="text-xs font-medium text-stone-500">
+            {visibleNumbers.length} {visibleNumbers.length === 1 ? "Number" : "Numbers"} Registered
           </span>
         </div>
 
         {loading ? (
-          <div className="py-16 flex flex-col items-center justify-center text-slate-400">
-            <Loader2 className="h-8 w-8 animate-spin text-indigo-600 mb-2" />
+          <div className="py-16 flex flex-col items-center justify-center text-stone-400">
+            <Loader2 className="h-8 w-8 animate-spin text-violet-600 mb-2" />
             <span className="text-xs">Loading phone numbers...</span>
           </div>
-        ) : numbers.length === 0 ? (
-          <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 p-12 text-center">
-            <Phone className="mx-auto h-10 w-10 text-slate-400" />
-            <h3 className="mt-3 text-sm font-semibold text-slate-900 dark:text-white">
+        ) : visibleNumbers.length === 0 ? (
+          <div className="rounded-[20px] border-2 border-dashed border-stone-200 dark:border-stone-800 p-12 text-center">
+            <Phone className="mx-auto h-10 w-10 text-stone-400" />
+            <h3 className="mt-3 text-sm font-semibold text-stone-900 dark:text-white">
               No Phone Numbers Connected
             </h3>
-            <p className="mt-1 text-xs text-slate-500 max-w-sm mx-auto">
+            <p className="mt-1 text-xs text-stone-500 max-w-sm mx-auto">
               Add your Plivo telephone number to allow your voice agents to make and receive calls.
             </p>
             <Button
               onClick={() => setIsAddModalOpen(true)}
-              className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs"
+              className="mt-4 bg-violet-600 hover:bg-violet-700 text-white text-xs"
             >
               <Plus className="h-4 w-4 mr-1.5" />
               Add Phone Number
             </Button>
           </div>
         ) : (
-          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden dark:border-slate-800 dark:bg-slate-950 shadow-xs">
+          <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden dark:border-stone-800 dark:bg-stone-950 shadow-[0_8px_30px_rgba(30,20,60,0.08)]">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/75 dark:border-slate-800 dark:bg-slate-900/50 text-slate-500 font-semibold">
+                  <tr className="border-b border-stone-200 bg-stone-50/75 dark:border-stone-800 dark:bg-stone-900/50 text-stone-500 font-semibold">
                     <th className="py-3 px-4">Phone Number</th>
                     <th className="py-3 px-4">Provider</th>
                     <th className="py-3 px-4">Direction</th>
@@ -554,20 +589,20 @@ export default function PhoneNumbersPage() {
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                  {numbers.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors">
+                <tbody className="divide-y divide-stone-100 dark:divide-stone-800/60">
+                  {visibleNumbers.map((item) => (
+                    <tr key={item.id} className="hover:bg-stone-50/50 dark:hover:bg-stone-900/30 transition-colors">
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2">
-                          <Phone className="h-4 w-4 text-indigo-600" />
-                          <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
+                          <Phone className="h-4 w-4 text-violet-600" />
+                          <span className="font-mono font-bold text-stone-900 dark:text-white text-xs">
                             {item.phoneNumber}
                           </span>
                         </div>
                       </td>
 
                       <td className="py-3.5 px-4">
-                        <span className="font-medium text-slate-700 dark:text-slate-300 uppercase">
+                        <span className="font-medium text-stone-700 dark:text-stone-300">
                           {item.provider}
                         </span>
                       </td>
@@ -580,11 +615,11 @@ export default function PhoneNumbersPage() {
 
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2">
-                          <Bot className="h-3.5 w-3.5 text-slate-400" />
+                          <Bot className="h-3.5 w-3.5 text-stone-400" />
                           <select
                             value={item.agentId || ""}
                             onChange={(e) => handleReassignAgent(item.id, e.target.value)}
-                            className="text-xs bg-slate-50 border border-slate-200 dark:bg-slate-900 dark:border-slate-800 rounded-md px-2 py-1 font-medium text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                            className="text-xs bg-stone-50 border border-stone-200 dark:bg-stone-900 dark:border-stone-800 rounded-md px-2 py-1 font-medium text-stone-800 dark:text-stone-200 focus:outline-hidden focus:ring-1 focus:ring-violet-500"
                           >
                             <option value="">— Unassigned (Inbound park) —</option>
                             {agents.map((ag) => (
@@ -605,7 +640,7 @@ export default function PhoneNumbersPage() {
                       <td className="py-3.5 px-4 text-right">
                         <button
                           onClick={() => handleDeleteNumber(item.id)}
-                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded transition-colors"
+                          className="text-stone-400 hover:text-rose-600 p-1.5 rounded transition-colors"
                           title="Remove number"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -630,7 +665,7 @@ export default function PhoneNumbersPage() {
       >
         <form onSubmit={handleAddNumber} className="space-y-4 pt-2 text-xs">
           <div>
-            <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block font-medium text-stone-700 dark:text-stone-300 mb-1">
               Phone Number (E.164 format)
             </label>
             <Input
@@ -641,19 +676,19 @@ export default function PhoneNumbersPage() {
               className="text-xs font-mono"
               required
             />
-            <span className="text-[11px] text-slate-400 mt-1 block">
+            <span className="text-[11px] text-stone-400 mt-1 block">
               Enter your rented Plivo number with country code (e.g. +91 for India, +1 for US).
             </span>
           </div>
 
           <div>
-            <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block font-medium text-stone-700 dark:text-stone-300 mb-1">
               Call Direction
             </label>
             <select
               value={newDirection}
               onChange={(e) => setNewDirection(e.target.value as "both" | "inbound" | "outbound")}
-              className="w-full text-xs bg-white border border-slate-200 dark:bg-slate-900 dark:border-slate-800 rounded-lg p-2 font-medium"
+              className="w-full text-xs bg-white border border-stone-200 dark:bg-stone-900 dark:border-stone-800 rounded-lg p-2 font-medium"
             >
               <option value="both">Both (Inbound & Outbound)</option>
               <option value="inbound">Inbound Only</option>
@@ -662,13 +697,13 @@ export default function PhoneNumbersPage() {
           </div>
 
           <div>
-            <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block font-medium text-stone-700 dark:text-stone-300 mb-1">
               Attach to Voice Agent (Optional)
             </label>
             <select
               value={selectedAgentId}
               onChange={(e) => setSelectedAgentId(e.target.value)}
-              className="w-full text-xs bg-white border border-slate-200 dark:bg-slate-900 dark:border-slate-800 rounded-lg p-2 font-medium"
+              className="w-full text-xs bg-white border border-stone-200 dark:bg-stone-900 dark:border-stone-800 rounded-lg p-2 font-medium"
             >
               <option value="">— Leave Unassigned —</option>
               {agents.map((ag) => (
@@ -677,7 +712,7 @@ export default function PhoneNumbersPage() {
                 </option>
               ))}
             </select>
-            <span className="text-[11px] text-slate-400 mt-1 block">
+            <span className="text-[11px] text-stone-400 mt-1 block">
               Inbound calls to this number will immediately be answered by this voice agent.
             </span>
           </div>
@@ -701,7 +736,7 @@ export default function PhoneNumbersPage() {
               type="submit"
               size="sm"
               disabled={addingNumber || !newNumber.trim()}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="bg-violet-600 hover:bg-violet-700 text-white"
             >
               {addingNumber ? (
                 <>

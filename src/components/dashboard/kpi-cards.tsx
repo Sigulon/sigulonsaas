@@ -15,15 +15,15 @@ interface KpiCardsProps {
 export function KpiCards({ stats }: KpiCardsProps) {
   const cards = [
     {
-      title: "Total Calls Dispatched",
+      title: "Total calls",
       value: stats.total_calls.toLocaleString(),
       subtitle: `${stats.answered_calls} answered by callee`,
       icon: PhoneCall,
-      iconColor: "text-indigo-600 dark:text-indigo-400",
-      bgColor: "bg-indigo-50 dark:bg-indigo-950/60",
+      iconColor: "text-violet-600 dark:text-violet-400",
+      bgColor: "bg-violet-50 dark:bg-violet-950/60",
     },
     {
-      title: "Connection / Answer Rate",
+      title: "Answer rate",
       value: `${stats.answer_rate_percentage}%`,
       subtitle: "Callee pickup & engagement",
       icon: CheckCircle2,
@@ -31,15 +31,15 @@ export function KpiCards({ stats }: KpiCardsProps) {
       bgColor: "bg-emerald-50 dark:bg-emerald-950/60",
     },
     {
-      title: "Average Call Duration",
+      title: "Average talk time",
       value: formatDuration(stats.avg_duration_seconds),
-      subtitle: "Talk time per completed turn",
+      subtitle: "Talk time per completed call",
       icon: Clock,
-      iconColor: "text-blue-600 dark:text-blue-400",
-      bgColor: "bg-blue-50 dark:bg-blue-950/60",
+      iconColor: "text-sky-600 dark:text-sky-400",
+      bgColor: "bg-sky-50 dark:bg-sky-950/60",
     },
     {
-      title: "Total Usage Cost",
+      title: "Credits spent",
       value: `${stats.total_credits_spent.toFixed(2)} cr`,
       subtitle: "Voice runtime + telephony",
       icon: Coins,
@@ -53,20 +53,20 @@ export function KpiCards({ stats }: KpiCardsProps) {
       {cards.map((card, idx) => {
         const Icon = card.icon;
         return (
-          <Card key={idx} className="border-slate-200/80 dark:border-slate-800 shadow-xs">
+          <Card key={idx}>
             <CardContent className="p-5 flex items-center justify-between">
               <div>
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                <span className="text-xs font-medium text-stone-500 dark:text-stone-400">
                   {card.title}
                 </span>
-                <div className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">
+                <div className="mt-1 text-2xl font-bold text-stone-900 dark:text-white">
                   {card.value}
                 </div>
-                <span className="text-[11px] text-slate-400 block mt-0.5">
+                <span className="text-[11px] text-stone-400 block mt-0.5">
                   {card.subtitle}
                 </span>
               </div>
-              <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${card.bgColor} ${card.iconColor}`}>
+              <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${card.bgColor} ${card.iconColor}`}>
                 <Icon className="h-5 w-5" />
               </div>
             </CardContent>

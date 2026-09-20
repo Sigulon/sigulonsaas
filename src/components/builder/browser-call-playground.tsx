@@ -468,15 +468,15 @@ export function BrowserCallPlayground({
   const quickPromptsList = QUICK_PROMPTS[langKey] || QUICK_PROMPTS.en;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950 space-y-6">
+    <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-stone-950 space-y-6">
       {/* Hidden audio tag for live streaming playback */}
       <audio ref={audioRef} />
 
       {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-100 dark:border-stone-800">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+            <h3 className="text-lg font-bold text-stone-900 dark:text-white">
               Live Voice Call Simulator
             </h3>
             <Badge
@@ -486,16 +486,16 @@ export function BrowserCallPlayground({
               Hands-Free Call Mode
             </Badge>
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-stone-500 mt-0.5">
             Talk to <strong>{agentName}</strong> through your microphone just like dialing a real phone number.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <span className="text-[11px] text-slate-400 block">Voice Persona</span>
-            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1">
-              <Volume2 className="h-3 w-3 text-indigo-500" />
+            <span className="text-[11px] text-stone-400 block">Voice Persona</span>
+            <span className="text-xs font-semibold text-stone-800 dark:text-stone-200 flex items-center gap-1">
+              <Volume2 className="h-3 w-3 text-violet-500" />
               {voiceName}
             </span>
           </div>
@@ -555,19 +555,19 @@ export function BrowserCallPlayground({
                 <div
                   className={`h-24 w-24 rounded-full flex items-center justify-center transition-all duration-300 ${
                     isAgentSpeaking
-                      ? "bg-indigo-600 shadow-[0_0_50px_rgba(99,102,241,0.7)] scale-105"
+                      ? "bg-violet-600 shadow-[0_0_50px_rgba(99,102,241,0.7)] scale-105"
                       : isListening
                       ? "bg-emerald-600 shadow-[0_0_45px_rgba(16,185,129,0.7)] scale-105 ring-4 ring-emerald-400/40"
                       : isProcessingTurn
                       ? "bg-amber-600 animate-pulse"
-                      : "bg-slate-800"
+                      : "bg-stone-800"
                   }`}
                 >
                   <Bot className="h-10 w-10 text-white" />
                 </div>
 
                 {isAgentSpeaking && (
-                  <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 bg-indigo-500 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full tracking-wider animate-bounce">
+                  <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 bg-violet-500 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full tracking-wider animate-bounce">
                     Agent Speaking
                   </span>
                 )}
@@ -587,11 +587,11 @@ export function BrowserCallPlayground({
 
               {isAgentSpeaking && (
                 <div className="flex items-center gap-1 mt-3">
-                  <span className="h-4 w-1 bg-indigo-400 rounded-full animate-bounce" />
-                  <span className="h-8 w-1 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.15s]" />
-                  <span className="h-12 w-1 bg-indigo-300 rounded-full animate-bounce [animation-delay:0.3s]" />
-                  <span className="h-7 w-1 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.45s]" />
-                  <span className="h-4 w-1 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.6s]" />
+                  <span className="h-4 w-1 bg-violet-400 rounded-full animate-bounce" />
+                  <span className="h-8 w-1 bg-violet-500 rounded-full animate-bounce [animation-delay:0.15s]" />
+                  <span className="h-12 w-1 bg-violet-300 rounded-full animate-bounce [animation-delay:0.3s]" />
+                  <span className="h-7 w-1 bg-violet-500 rounded-full animate-bounce [animation-delay:0.45s]" />
+                  <span className="h-4 w-1 bg-violet-400 rounded-full animate-bounce [animation-delay:0.6s]" />
                 </div>
               )}
 
@@ -601,7 +601,7 @@ export function BrowserCallPlayground({
                     <Radio className="h-4 w-4 animate-pulse text-emerald-400" />
                     Microphone is Live — Speak freely, agent is listening!
                   </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                  <span className="text-[10px] text-stone-400 block mt-0.5">
                     No buttons needed. Just talk like on a real phone call.
                   </span>
                 </div>
@@ -618,11 +618,11 @@ export function BrowserCallPlayground({
             </div>
           ) : (
             <div className="text-center space-y-2">
-              <div className="mx-auto h-16 w-16 rounded-full bg-slate-800 flex items-center justify-center text-slate-400">
+              <div className="mx-auto h-16 w-16 rounded-full bg-stone-800 flex items-center justify-center text-stone-400">
                 <PhoneCall className="h-7 w-7" />
               </div>
               <h4 className="font-semibold text-sm">Call Simulator Ready</h4>
-              <p className="text-xs text-slate-400 max-w-sm">
+              <p className="text-xs text-stone-400 max-w-sm">
                 Click &quot;Start Web Call&quot; to begin a live telephone conversation with your agent directly in the browser.
               </p>
             </div>
@@ -631,7 +631,7 @@ export function BrowserCallPlayground({
 
         {/* Live Conversation Transcript Feed */}
         {isInCall && messages.length > 0 && (
-          <div className="max-h-44 overflow-y-auto space-y-2.5 p-3 rounded-xl bg-slate-800/60 border border-slate-700/50 backdrop-blur-xs">
+          <div className="max-h-44 overflow-y-auto space-y-2.5 p-3 rounded-xl bg-stone-800/60 border border-stone-700/50 backdrop-blur-xs">
             {messages.map((m, idx) => (
               <div
                 key={idx}
@@ -641,7 +641,7 @@ export function BrowserCallPlayground({
               >
                 <div
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                    m.role === "user" ? "bg-emerald-600 text-white" : "bg-indigo-600 text-white"
+                    m.role === "user" ? "bg-emerald-600 text-white" : "bg-violet-600 text-white"
                   }`}
                 >
                   {m.role === "user" ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
@@ -650,7 +650,7 @@ export function BrowserCallPlayground({
                   className={`max-w-[80%] rounded-xl px-3 py-2 ${
                     m.role === "user"
                       ? "bg-emerald-600/90 text-white text-right"
-                      : "bg-slate-700/90 text-slate-100"
+                      : "bg-stone-700/90 text-stone-100"
                   }`}
                 >
                   <p className="leading-relaxed text-xs">{m.content}</p>
@@ -684,8 +684,8 @@ export function BrowserCallPlayground({
 
           {/* Quick Speech Chips (1-Click Spoken Questions) */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-slate-400 mr-1 flex items-center gap-1">
-              <Sparkles className="h-3 w-3 text-indigo-500" />
+            <span className="text-[11px] font-semibold text-stone-400 mr-1 flex items-center gap-1">
+              <Sparkles className="h-3 w-3 text-violet-500" />
               1-Click Questions:
             </span>
             {quickPromptsList.map((promptText, i) => (
@@ -694,7 +694,7 @@ export function BrowserCallPlayground({
                 type="button"
                 onClick={() => handleSendMessage(promptText)}
                 disabled={isProcessingTurn || isAgentSpeaking}
-                className="text-[11px] rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-700 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 transition-all cursor-pointer disabled:opacity-50"
+                className="text-[11px] rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-stone-700 hover:border-violet-400 hover:bg-violet-50 hover:text-violet-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300 transition-all cursor-pointer disabled:opacity-50"
               >
                 {promptText}
               </button>
@@ -719,11 +719,11 @@ export function BrowserCallPlayground({
               className={`h-10 px-3.5 text-xs flex items-center gap-1.5 ${
                 isListening
                   ? "border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-400 dark:bg-emerald-950/30"
-                  : "border-slate-300 hover:bg-slate-50"
+                  : "border-stone-300 hover:bg-stone-50"
               }`}
               title="Toggle microphone"
             >
-              <Mic className={`h-4 w-4 ${isListening ? "text-emerald-600 animate-pulse" : "text-slate-600"}`} />
+              <Mic className={`h-4 w-4 ${isListening ? "text-emerald-600 animate-pulse" : "text-stone-600"}`} />
               <span className="font-semibold">{isListening ? "Mic On" : "Mic"}</span>
             </Button>
 
@@ -738,7 +738,7 @@ export function BrowserCallPlayground({
             <Button
               type="submit"
               disabled={!inputText.trim() || isProcessingTurn}
-              className="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs flex items-center gap-1"
+              className="h-10 px-4 bg-violet-600 hover:bg-violet-700 text-white text-xs flex items-center gap-1"
             >
               {isProcessingTurn ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

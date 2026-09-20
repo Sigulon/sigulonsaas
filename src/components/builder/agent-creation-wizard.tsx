@@ -582,7 +582,7 @@ export function AgentCreationWizard() {
       <audio ref={audioPreviewRef} className="hidden" />
 
       {/* Stepper Header */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs overflow-x-auto">
+      <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-4 shadow-xs overflow-x-auto">
         <div className="flex items-center justify-between min-w-[750px] gap-2">
           {STEPS.map((s) => {
             const isCompleted = currentStep > s.step;
@@ -602,19 +602,19 @@ export function AgentCreationWizard() {
                 disabled={s.step > currentStep && !generatedBundle}
                 className={`flex items-center gap-2 text-left transition-all py-1 px-2 rounded-lg cursor-pointer ${
                   isCurrent
-                    ? "text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-950/40"
+                    ? "text-violet-600 dark:text-violet-400 font-bold bg-violet-50 dark:bg-violet-950/40"
                     : isCompleted
-                    ? "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    : "text-slate-400 dark:text-slate-600 opacity-60 cursor-not-allowed"
+                    ? "text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800"
+                    : "text-stone-400 dark:text-stone-600 opacity-60 cursor-not-allowed"
                 }`}
               >
                 <div
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
                     isCurrent
-                      ? "bg-indigo-600 text-white shadow-xs"
+                      ? "bg-violet-600 text-white shadow-xs"
                       : isCompleted
                       ? "bg-emerald-500 text-white"
-                      : "bg-slate-200 dark:bg-slate-800 text-slate-500"
+                      : "bg-stone-200 dark:bg-stone-800 text-stone-500"
                   }`}
                 >
                   {isCompleted ? <Check className="w-3.5 h-3.5" /> : s.step}
@@ -629,24 +629,24 @@ export function AgentCreationWizard() {
       </div>
 
       {/* Main Wizard Content Card */}
-      <Card className="border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900">
-        <CardHeader className="border-b border-slate-100 dark:border-slate-800/80 pb-4">
+      <Card className="border-stone-200 dark:border-stone-800 shadow-sm bg-white dark:bg-stone-900">
+        <CardHeader className="border-b border-stone-100 dark:border-stone-800/80 pb-4">
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+              <span className="text-xs font-semibold text-violet-600 dark:text-violet-400">
                 Step {currentStep} of 12
               </span>
-              <CardTitle className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">
+              <CardTitle className="text-xl font-bold text-stone-900 dark:text-white mt-0.5">
                 {STEPS[currentStep - 1].title}
               </CardTitle>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
                 {STEPS[currentStep - 1].desc}
               </p>
             </div>
 
             {currentStep === 1 && (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 font-medium hidden sm:inline">Use Template:</span>
+                <span className="text-xs text-stone-500 font-medium hidden sm:inline">Use Template:</span>
                 {INDUSTRY_PRESETS.map((p, idx) => (
                   <Button
                     key={idx}
@@ -679,22 +679,22 @@ export function AgentCreationWizard() {
                   onClick={() => setCallType("outbound")}
                   className={`border-2 rounded-xl p-5 cursor-pointer transition-all ${
                     callType === "outbound"
-                      ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/20 shadow-xs"
-                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300"
+                      ? "border-violet-600 bg-violet-50/50 dark:bg-violet-950/20 shadow-xs"
+                      : "border-stone-200 dark:border-stone-800 hover:border-stone-300"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-slate-900 dark:text-white text-base">
+                    <span className="font-bold text-stone-900 dark:text-white text-base">
                       Outbound Calling Agent
                     </span>
                     <Badge variant={callType === "outbound" ? "default" : "secondary"}>
                       Proactive
                     </Badge>
                   </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">
                     Agent dials target leads, introduces company & reason for calling, verifies contact availability, asks qualification questions, and books next steps.
                   </p>
-                  <div className="mt-4 text-[11px] text-slate-500 font-medium">
+                  <div className="mt-4 text-[11px] text-stone-500 font-medium">
                     Best for: Lead qualification, real estate follow-ups, renewal reminders.
                   </div>
                 </div>
@@ -703,22 +703,22 @@ export function AgentCreationWizard() {
                   onClick={() => setCallType("inbound")}
                   className={`border-2 rounded-xl p-5 cursor-pointer transition-all ${
                     callType === "inbound"
-                      ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/20 shadow-xs"
-                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300"
+                      ? "border-violet-600 bg-violet-50/50 dark:bg-violet-950/20 shadow-xs"
+                      : "border-stone-200 dark:border-stone-800 hover:border-stone-300"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-slate-900 dark:text-white text-base">
+                    <span className="font-bold text-stone-900 dark:text-white text-base">
                       Inbound Reception & Support
                     </span>
                     <Badge variant={callType === "inbound" ? "default" : "secondary"}>
                       Reactive
                     </Badge>
                   </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">
                     Agent answers incoming calls to your business number, warmly greets the caller, resolves inquiries using business knowledge, and captures requirements.
                   </p>
-                  <div className="mt-4 text-[11px] text-slate-500 font-medium">
+                  <div className="mt-4 text-[11px] text-stone-500 font-medium">
                     Best for: Front desk clinic reception, e-commerce support, hotel booking.
                   </div>
                 </div>
@@ -730,7 +730,7 @@ export function AgentCreationWizard() {
           {currentStep === 2 && (
             <div className="space-y-4 max-w-xl">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                   Agent Persona Name *
                 </label>
                 <Input
@@ -739,13 +739,13 @@ export function AgentCreationWizard() {
                   placeholder="e.g. Priya, Alex, Rahul"
                   className="text-sm"
                 />
-                <p className="text-[11px] text-slate-500 mt-1">
+                <p className="text-[11px] text-stone-500 mt-1">
                   The spoken name your AI agent introduces itself as.
                 </p>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                   Agent Professional Role *
                 </label>
                 <Input
@@ -757,7 +757,7 @@ export function AgentCreationWizard() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                   Company / Organization Name *
                 </label>
                 <Input
@@ -774,7 +774,7 @@ export function AgentCreationWizard() {
           {currentStep === 3 && (
             <div className="space-y-4 max-w-xl">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                   What is the primary purpose of this call? *
                 </label>
                 <Textarea
@@ -788,7 +788,7 @@ export function AgentCreationWizard() {
                   }
                   className="text-sm"
                 />
-                <p className="text-[11px] text-slate-500 mt-1">
+                <p className="text-[11px] text-stone-500 mt-1">
                   This gives the agent its context and reason for engaging the caller.
                 </p>
               </div>
@@ -799,7 +799,7 @@ export function AgentCreationWizard() {
           {currentStep === 4 && (
             <div className="space-y-4 max-w-xl">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                   Primary Conversation Goal *
                 </label>
                 <Input
@@ -811,7 +811,7 @@ export function AgentCreationWizard() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                   Specific Desired Outcomes
                 </label>
                 <div className="flex flex-wrap gap-2 mb-2">
@@ -880,14 +880,14 @@ export function AgentCreationWizard() {
                 {qualificationFields.map((field) => (
                   <div
                     key={field.key}
-                    className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-lg"
+                    className="flex items-center justify-between p-3.5 bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-800 rounded-lg"
                   >
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-xs text-slate-900 dark:text-white">
+                        <span className="font-semibold text-xs text-stone-900 dark:text-white">
                           {field.label}
                         </span>
-                        <code className="text-[11px] font-mono text-indigo-600 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded">
+                        <code className="text-[11px] font-mono text-violet-600 bg-violet-50 dark:bg-violet-950 px-1.5 py-0.5 rounded">
                           {"{" + field.key + "}"}
                         </code>
                         <Badge variant="outline" className="text-[10px] capitalize">
@@ -900,12 +900,12 @@ export function AgentCreationWizard() {
                         )}
                       </div>
                       {field.description && (
-                        <p className="text-[11px] text-slate-500 mt-1">
+                        <p className="text-[11px] text-stone-500 mt-1">
                           Question prompt: &quot;{field.description}&quot;
                         </p>
                       )}
                       {field.choices && field.choices.length > 0 && (
-                        <div className="text-[10px] text-slate-400 mt-0.5">
+                        <div className="text-[10px] text-stone-400 mt-0.5">
                           Options: {field.choices.join(" | ")}
                         </div>
                       )}
@@ -924,15 +924,15 @@ export function AgentCreationWizard() {
               </div>
 
               {/* Add New Field Box */}
-              <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-900/50 space-y-3">
-                <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <Plus className="h-3.5 w-3.5 text-indigo-600" />
+              <div className="border border-dashed border-stone-300 dark:border-stone-700 rounded-xl p-4 bg-stone-50/50 dark:bg-stone-900/50 space-y-3">
+                <span className="text-xs font-semibold text-stone-900 dark:text-white flex items-center gap-1.5">
+                  <Plus className="h-3.5 w-3.5 text-violet-600" />
                   Add Qualification Question
                 </span>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="text-[11px] text-slate-600 dark:text-slate-400 block mb-1">
+                    <label className="text-[11px] text-stone-600 dark:text-stone-400 block mb-1">
                       Field Label *
                     </label>
                     <Input
@@ -951,7 +951,7 @@ export function AgentCreationWizard() {
                   </div>
 
                   <div>
-                    <label className="text-[11px] text-slate-600 dark:text-slate-400 block mb-1">
+                    <label className="text-[11px] text-stone-600 dark:text-stone-400 block mb-1">
                       Variable Key (snake_case)
                     </label>
                     <Input
@@ -963,13 +963,13 @@ export function AgentCreationWizard() {
                   </div>
 
                   <div>
-                    <label className="text-[11px] text-slate-600 dark:text-slate-400 block mb-1">
+                    <label className="text-[11px] text-stone-600 dark:text-stone-400 block mb-1">
                       Answer Type
                     </label>
                     <select
                       value={newFieldType}
                       onChange={(e) => setNewFieldType(e.target.value as typeof newFieldType)}
-                      className="w-full text-xs h-9 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2"
+                      className="w-full text-xs h-9 rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 px-2"
                     >
                       <option value="text">Freeform Text</option>
                       <option value="choice">Multiple Choice</option>
@@ -982,7 +982,7 @@ export function AgentCreationWizard() {
 
                 {newFieldType === "choice" && (
                   <div>
-                    <label className="text-[11px] text-slate-600 dark:text-slate-400 block mb-1">
+                    <label className="text-[11px] text-stone-600 dark:text-stone-400 block mb-1">
                       Choices (comma separated)
                     </label>
                     <Input
@@ -995,7 +995,7 @@ export function AgentCreationWizard() {
                 )}
 
                 <div>
-                  <label className="text-[11px] text-slate-600 dark:text-slate-400 block mb-1">
+                  <label className="text-[11px] text-stone-600 dark:text-stone-400 block mb-1">
                     Question Phrasing / Prompt Hint
                   </label>
                   <Input
@@ -1007,12 +1007,12 @@ export function AgentCreationWizard() {
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                  <label className="flex items-center gap-2 text-xs text-stone-700 dark:text-stone-300 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={newFieldRequired}
                       onChange={(e) => setNewFieldRequired(e.target.checked)}
-                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      className="rounded border-stone-300 text-violet-600 focus:ring-violet-500"
                     />
                     Required field (agent must collect before closing)
                   </label>
@@ -1044,13 +1044,13 @@ export function AgentCreationWizard() {
                 {preCallVariables.map((v) => (
                   <div
                     key={v.key}
-                    className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-lg"
+                    className="flex items-center justify-between p-3.5 bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-800 rounded-lg"
                   >
                     <div className="flex items-center gap-2">
-                      <code className="text-xs font-mono text-indigo-600 bg-indigo-50 dark:bg-indigo-950 px-2 py-0.5 rounded">
+                      <code className="text-xs font-mono text-violet-600 bg-violet-50 dark:bg-violet-950 px-2 py-0.5 rounded">
                         {"{" + v.key + "}"}
                       </code>
-                      <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      <span className="text-xs font-semibold text-stone-800 dark:text-stone-200">
                         {v.label}
                       </span>
                     </div>
@@ -1069,7 +1069,7 @@ export function AgentCreationWizard() {
 
               <div className="flex gap-2 items-end max-w-xl">
                 <div className="flex-1">
-                  <label className="text-[11px] text-slate-600 block mb-1">Variable Key</label>
+                  <label className="text-[11px] text-stone-600 block mb-1">Variable Key</label>
                   <Input
                     value={newPreKey}
                     onChange={(e) => setNewPreKey(e.target.value)}
@@ -1078,7 +1078,7 @@ export function AgentCreationWizard() {
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="text-[11px] text-slate-600 block mb-1">Display Label</label>
+                  <label className="text-[11px] text-stone-600 block mb-1">Display Label</label>
                   <Input
                     value={newPreLabel}
                     onChange={(e) => setNewPreLabel(e.target.value)}
@@ -1097,7 +1097,7 @@ export function AgentCreationWizard() {
           {currentStep === 7 && (
             <div className="space-y-6">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                   Verified Business Knowledge & Offerings *
                 </label>
                 <Textarea
@@ -1107,13 +1107,13 @@ export function AgentCreationWizard() {
                   placeholder="Paste verified facts: project location, pricing benchmarks, specifications, amenities, or doctor consultation fees..."
                   className="text-xs"
                 />
-                <p className="text-[11px] text-slate-500 mt-1">
+                <p className="text-[11px] text-stone-500 mt-1">
                   The agent uses this knowledge to accurately answer customer inquiries without hallucinating.
                 </p>
               </div>
 
-              <div className="border-t border-slate-200 dark:border-slate-800 pt-4 space-y-4">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <div className="border-t border-stone-200 dark:border-stone-800 pt-4 space-y-4">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300">
                   Common FAQs (Question & Answer Pairs)
                 </label>
 
@@ -1121,13 +1121,13 @@ export function AgentCreationWizard() {
                   {faqs.map((faq, idx) => (
                     <div
                       key={idx}
-                      className="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-lg flex items-start justify-between gap-4"
+                      className="p-3 bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-800 rounded-lg flex items-start justify-between gap-4"
                     >
                       <div className="space-y-1 text-xs">
-                        <div className="font-semibold text-slate-900 dark:text-white">
+                        <div className="font-semibold text-stone-900 dark:text-white">
                           Q: {faq.question}
                         </div>
-                        <div className="text-slate-600 dark:text-slate-400">
+                        <div className="text-stone-600 dark:text-stone-400">
                           A: {faq.answer}
                         </div>
                       </div>
@@ -1144,7 +1144,7 @@ export function AgentCreationWizard() {
                   ))}
                 </div>
 
-                <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-3.5 bg-slate-50/50 dark:bg-slate-900/50 space-y-2">
+                <div className="border border-dashed border-stone-300 dark:border-stone-700 rounded-xl p-3.5 bg-stone-50/50 dark:bg-stone-900/50 space-y-2">
                   <Input
                     value={newFaqQ}
                     onChange={(e) => setNewFaqQ(e.target.value)}
@@ -1176,7 +1176,7 @@ export function AgentCreationWizard() {
           {/* STEP 8: Actions / Next Steps */}
           {currentStep === 8 && (
             <div className="space-y-6 max-w-xl">
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300">
                 What actions can the agent execute once conversation goals are achieved?
               </label>
 
@@ -1196,12 +1196,12 @@ export function AgentCreationWizard() {
                       onClick={() => toggleAction(act)}
                       className={`p-3 border rounded-xl cursor-pointer text-xs font-medium flex items-center justify-between transition-all ${
                         isChecked
-                          ? "border-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200 shadow-xs"
-                          : "border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300"
+                          ? "border-violet-600 bg-violet-50/60 dark:bg-violet-950/30 text-violet-900 dark:text-violet-200 shadow-xs"
+                          : "border-stone-200 dark:border-stone-800 text-stone-700 dark:text-stone-300 hover:border-stone-300"
                       }`}
                     >
                       <span>{act}</span>
-                      {isChecked && <Check className="w-4 h-4 text-indigo-600" />}
+                      {isChecked && <Check className="w-4 h-4 text-violet-600" />}
                     </div>
                   );
                 })}
@@ -1232,13 +1232,13 @@ export function AgentCreationWizard() {
             <div className="space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                     Primary Spoken Language *
                   </label>
                   <select
                     value={primaryLanguage}
                     onChange={(e) => setPrimaryLanguage(e.target.value)}
-                    className="w-full text-xs h-9 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3"
+                    className="w-full text-xs h-9 rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 px-3"
                   >
                     {INDIAN_LANGUAGES.map((lang) => (
                       <option key={lang.code} value={lang.code}>
@@ -1249,7 +1249,7 @@ export function AgentCreationWizard() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                     Secondary Languages (Supported for Multilingual callers)
                   </label>
                   <div className="flex flex-wrap gap-1.5 pt-1">
@@ -1268,8 +1268,8 @@ export function AgentCreationWizard() {
                           }}
                           className={`text-[11px] py-1 px-2.5 rounded-full border cursor-pointer transition-all ${
                             isSelected
-                              ? "bg-indigo-600 text-white border-indigo-600"
-                              : "border-slate-200 dark:border-slate-800 text-slate-600 hover:border-slate-300"
+                              ? "bg-violet-600 text-white border-violet-600"
+                              : "border-stone-200 dark:border-stone-800 text-stone-600 hover:border-stone-300"
                           }`}
                         >
                           {l.name}
@@ -1280,12 +1280,12 @@ export function AgentCreationWizard() {
                 </div>
               </div>
 
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-lg flex items-center justify-between">
+              <div className="p-3 bg-stone-50 dark:bg-stone-800/40 border border-stone-200 dark:border-stone-800 rounded-lg flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-semibold text-slate-900 dark:text-white block">
+                  <span className="text-xs font-semibold text-stone-900 dark:text-white block">
                     Automatic Language Switching
                   </span>
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-stone-500">
                     If caller speaks in Hindi, Telugu, or English, agent automatically adapts without asking.
                   </span>
                 </div>
@@ -1293,18 +1293,18 @@ export function AgentCreationWizard() {
                   type="checkbox"
                   checked={autoLanguageSwitch}
                   onChange={(e) => setAutoLanguageSwitch(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                  className="h-4 w-4 rounded border-stone-300 text-violet-600"
                 />
               </div>
 
               {/* Voice Picker */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-2">
                   Select Cartesia Voice Persona (with Audio Preview)
                 </label>
 
                 {loadingVoices ? (
-                  <div className="p-6 text-center text-xs text-slate-500">
+                  <div className="p-6 text-center text-xs text-stone-500">
                     <RefreshCw className="h-4 w-4 animate-spin inline mr-2" />
                     Loading voices...
                   </div>
@@ -1319,15 +1319,15 @@ export function AgentCreationWizard() {
                           onClick={() => setSelectedVoiceId(v.id)}
                           className={`p-3 border rounded-xl cursor-pointer flex items-center justify-between transition-all ${
                             isSelected
-                              ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/20 shadow-xs"
-                              : "border-slate-200 dark:border-slate-800 hover:border-slate-300"
+                              ? "border-violet-600 bg-violet-50/50 dark:bg-violet-950/20 shadow-xs"
+                              : "border-stone-200 dark:border-stone-800 hover:border-stone-300"
                           }`}
                         >
                           <div className="space-y-0.5">
-                            <span className="text-xs font-semibold text-slate-900 dark:text-white block">
+                            <span className="text-xs font-semibold text-stone-900 dark:text-white block">
                               {v.name}
                             </span>
-                            <span className="text-[10px] text-slate-500 capitalize">
+                            <span className="text-[10px] text-stone-500 capitalize">
                               {v.gender} • {v.accent || "Standard"}
                             </span>
                           </div>
@@ -1346,7 +1346,7 @@ export function AgentCreationWizard() {
                               {isPlaying ? (
                                 <Square className="h-3 w-3 text-red-500 fill-red-500" />
                               ) : (
-                                <Play className="h-3 w-3 text-indigo-600 fill-indigo-600" />
+                                <Play className="h-3 w-3 text-violet-600 fill-violet-600" />
                               )}
                             </Button>
                           )}
@@ -1363,7 +1363,7 @@ export function AgentCreationWizard() {
           {currentStep === 10 && (
             <div className="space-y-6">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-2">
                   Conversation Delivery Style
                 </label>
                 <div className="grid grid-cols-3 gap-3">
@@ -1377,14 +1377,14 @@ export function AgentCreationWizard() {
                       onClick={() => setConversationStyle(style.key)}
                       className={`p-3.5 border rounded-xl cursor-pointer text-center transition-all ${
                         conversationStyle === style.key
-                          ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/20 shadow-xs"
-                          : "border-slate-200 dark:border-slate-800 hover:border-slate-300"
+                          ? "border-violet-600 bg-violet-50/50 dark:bg-violet-950/20 shadow-xs"
+                          : "border-stone-200 dark:border-stone-800 hover:border-stone-300"
                       }`}
                     >
-                      <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                      <span className="text-xs font-bold text-stone-900 dark:text-white block">
                         {style.title}
                       </span>
-                      <span className="text-[10px] text-slate-500 mt-1 block">
+                      <span className="text-[10px] text-stone-500 mt-1 block">
                         {style.desc}
                       </span>
                     </div>
@@ -1394,16 +1394,16 @@ export function AgentCreationWizard() {
 
               {/* Rules Checklist */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-2">
                   Behavior & Guardrail Rules
                 </label>
                 <div className="space-y-2 mb-3">
                   {rules.map((rule, idx) => (
                     <div
                       key={idx}
-                      className="p-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-lg flex items-center justify-between text-xs"
+                      className="p-2.5 bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-800 rounded-lg flex items-center justify-between text-xs"
                     >
-                      <span className="text-slate-800 dark:text-slate-200">{rule}</span>
+                      <span className="text-stone-800 dark:text-stone-200">{rule}</span>
                       <Button
                         type="button"
                         variant="ghost"
@@ -1441,43 +1441,43 @@ export function AgentCreationWizard() {
           {/* STEP 11: Review Specification & Generate */}
           {currentStep === 11 && (
             <div className="space-y-6">
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4 text-xs">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+              <div className="p-4 bg-stone-50 dark:bg-stone-800/40 border border-stone-200 dark:border-stone-800 rounded-xl space-y-4 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-3 border-b border-stone-200 dark:border-stone-700">
                   <div>
-                    <span className="text-slate-500 text-[11px] block">Call Type</span>
-                    <span className="font-bold capitalize text-slate-900 dark:text-white">
+                    <span className="text-stone-500 text-[11px] block">Call Type</span>
+                    <span className="font-bold capitalize text-stone-900 dark:text-white">
                       {callType}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-500 text-[11px] block">Agent Persona</span>
-                    <span className="font-bold text-slate-900 dark:text-white">
+                    <span className="text-stone-500 text-[11px] block">Agent Persona</span>
+                    <span className="font-bold text-stone-900 dark:text-white">
                       {agentName} ({agentRole})
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-500 text-[11px] block">Company</span>
-                    <span className="font-bold text-slate-900 dark:text-white">
+                    <span className="text-stone-500 text-[11px] block">Company</span>
+                    <span className="font-bold text-stone-900 dark:text-white">
                       {companyName}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-500 text-[11px] block">Language</span>
-                    <span className="font-bold text-slate-900 dark:text-white uppercase">
+                    <span className="text-stone-500 text-[11px] block">Language</span>
+                    <span className="font-bold text-stone-900 dark:text-white">
                       {primaryLanguage} {secondaryLanguages.length ? `(+${secondaryLanguages.join(",")})` : ""}
                     </span>
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-slate-500 text-[11px] block mb-1">Primary Goal</span>
-                  <span className="font-medium text-slate-800 dark:text-slate-200">
+                  <span className="text-stone-500 text-[11px] block mb-1">Primary Goal</span>
+                  <span className="font-medium text-stone-800 dark:text-stone-200">
                     {conversationGoal}
                   </span>
                 </div>
 
                 <div>
-                  <span className="text-slate-500 text-[11px] block mb-1">
+                  <span className="text-stone-500 text-[11px] block mb-1">
                     Questions to Qualify ({qualificationFields.length})
                   </span>
                   <div className="flex flex-wrap gap-1.5">
@@ -1490,7 +1490,7 @@ export function AgentCreationWizard() {
                 </div>
 
                 <div>
-                  <span className="text-slate-500 text-[11px] block mb-1">
+                  <span className="text-stone-500 text-[11px] block mb-1">
                     Pre-known Customer Information ({preCallVariables.length})
                   </span>
                   <div className="flex flex-wrap gap-1.5">
@@ -1503,10 +1503,10 @@ export function AgentCreationWizard() {
                 </div>
 
                 <div>
-                  <span className="text-slate-500 text-[11px] block mb-1">
+                  <span className="text-stone-500 text-[11px] block mb-1">
                     Configured FAQs & Knowledge
                   </span>
-                  <span className="text-slate-700 dark:text-slate-300">
+                  <span className="text-stone-700 dark:text-stone-300">
                     {faqs.length} FAQs configured • {businessKnowledge.length} chars verified knowledge
                   </span>
                 </div>
@@ -1516,7 +1516,7 @@ export function AgentCreationWizard() {
                 <Button
                   type="button"
                   size="lg"
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 shadow-md gap-2"
+                  className="bg-violet-600 hover:bg-violet-700 text-white font-bold px-8 shadow-md gap-2"
                   onClick={handleGenerateBundle}
                   disabled={generatingBundle}
                 >
@@ -1532,7 +1532,7 @@ export function AgentCreationWizard() {
                     </>
                   )}
                 </Button>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-stone-500">
                   Transforms your answers into an optimized, schema-validated JSON bundle ready for real-time voice calls.
                 </p>
               </div>
@@ -1564,17 +1564,17 @@ export function AgentCreationWizard() {
               )}
 
               {/* First Response Spoken Utterance */}
-              <div className="p-4 bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900 rounded-xl space-y-1.5">
+              <div className="p-4 bg-violet-50/70 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-900 rounded-xl space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
-                    <Volume2 className="h-4 w-4 text-indigo-600" />
+                  <span className="text-xs font-bold text-violet-900 dark:text-violet-300 flex items-center gap-1.5">
+                    <Volume2 className="h-4 w-4 text-violet-600" />
                     Opening Utterance (Spoken First)
                   </span>
                   <Badge variant="outline" className="text-[10px]">
                     {callType === "outbound" ? "Lead Greeter" : "Inbound Welcome"}
                   </Badge>
                 </div>
-                <p className="text-sm italic font-medium text-indigo-950 dark:text-indigo-100 pl-2 border-l-2 border-indigo-500">
+                <p className="text-sm italic font-medium text-violet-950 dark:text-violet-100 pl-2 border-l-2 border-violet-500">
                   &quot;{generatedBundle.first_response}&quot;
                 </p>
               </div>
@@ -1582,11 +1582,11 @@ export function AgentCreationWizard() {
               {/* Conversation Flow Diagram / Cards */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <Workflow className="h-4 w-4 text-indigo-600" />
+                  <span className="text-xs font-bold text-stone-900 dark:text-white flex items-center gap-1.5">
+                    <Workflow className="h-4 w-4 text-violet-600" />
                     Conversation Sections Flowchart (Schema v2)
                   </span>
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-stone-500">
                     {generatedBundle.sections.length} Logical States
                   </span>
                 </div>
@@ -1595,41 +1595,41 @@ export function AgentCreationWizard() {
                   {generatedBundle.sections.map((section, idx) => (
                     <div
                       key={section.section_key}
-                      className="border border-slate-200 dark:border-slate-800 rounded-xl p-4 bg-slate-50/60 dark:bg-slate-800/40 space-y-2 relative"
+                      className="border border-stone-200 dark:border-stone-800 rounded-xl p-4 bg-stone-50/60 dark:bg-stone-800/40 space-y-2 relative"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center justify-center">
+                          <span className="w-5 h-5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300 text-xs font-bold flex items-center justify-center">
                             {idx + 1}
                           </span>
-                          <span className="text-xs font-bold text-slate-900 dark:text-white">
+                          <span className="text-xs font-bold text-stone-900 dark:text-white">
                             {section.label}
                           </span>
-                          <code className="text-[10px] font-mono text-indigo-600 bg-indigo-50 dark:bg-indigo-950 px-1 rounded">
+                          <code className="text-[10px] font-mono text-violet-600 bg-violet-50 dark:bg-violet-950 px-1 rounded">
                             {section.section_key}
                           </code>
                         </div>
 
                         {section.edges && section.edges.length > 0 ? (
-                          <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1">
+                          <div className="text-[11px] text-violet-600 dark:text-violet-400 font-medium flex items-center gap-1">
                             <span>Transitions to:</span>
                             {section.edges.map((e) => (
                               <code
                                 key={e.to_key}
-                                className="bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700"
+                                className="bg-white dark:bg-stone-900 px-1.5 py-0.5 rounded border border-stone-200 dark:border-stone-700"
                               >
                                 {e.to_key}
                               </code>
                             ))}
                           </div>
                         ) : (
-                          <Badge variant="outline" className="text-[10px] text-slate-500">
+                          <Badge variant="outline" className="text-[10px] text-stone-500">
                             Terminal State (Disconnect)
                           </Badge>
                         )}
                       </div>
 
-                      <div className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-line bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                      <div className="text-xs text-stone-600 dark:text-stone-300 whitespace-pre-line bg-white dark:bg-stone-900 p-2.5 rounded-lg border border-stone-200 dark:border-stone-800">
                         {section.prompt}
                       </div>
                     </div>
@@ -1639,14 +1639,14 @@ export function AgentCreationWizard() {
 
               {/* Variables Table */}
               <div className="space-y-2">
-                <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <Layers className="h-4 w-4 text-indigo-600" />
+                <span className="text-xs font-bold text-stone-900 dark:text-white flex items-center gap-1.5">
+                  <Layers className="h-4 w-4 text-violet-600" />
                   Variables Matrix
                 </span>
 
-                <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden text-xs">
+                <div className="border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden text-xs">
                   <table className="w-full text-left">
-                    <thead className="bg-slate-100 dark:bg-slate-800/70 text-slate-600 dark:text-slate-400 font-semibold">
+                    <thead className="bg-stone-100 dark:bg-stone-800/70 text-stone-600 dark:text-stone-400 font-semibold">
                       <tr>
                         <th className="py-2 px-3">Variable Key</th>
                         <th className="py-2 px-3">Display Label</th>
@@ -1655,10 +1655,10 @@ export function AgentCreationWizard() {
                         <th className="py-2 px-3">Required</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                    <tbody className="divide-y divide-stone-200 dark:divide-stone-800 bg-white dark:bg-stone-900">
                       {generatedBundle.variables.map((v) => (
                         <tr key={v.key}>
-                          <td className="py-2 px-3 font-mono text-indigo-600">
+                          <td className="py-2 px-3 font-mono text-violet-600">
                             {"{" + v.key + "}"}
                           </td>
                           <td className="py-2 px-3">{v.label}</td>
@@ -1679,7 +1679,7 @@ export function AgentCreationWizard() {
                             {v.required ? (
                               <span className="text-red-500 font-bold">Yes</span>
                             ) : (
-                              <span className="text-slate-400">Optional</span>
+                              <span className="text-stone-400">Optional</span>
                             )}
                           </td>
                         </tr>
@@ -1703,7 +1703,7 @@ export function AgentCreationWizard() {
                 </Button>
 
                 {showRawJson && (
-                  <pre className="mt-2 p-4 bg-slate-950 text-slate-200 rounded-xl text-xs font-mono overflow-x-auto max-h-96">
+                  <pre className="mt-2 p-4 bg-stone-950 text-stone-200 rounded-xl text-xs font-mono overflow-x-auto max-h-96">
                     {JSON.stringify(generatedBundle, null, 2)}
                   </pre>
                 )}
@@ -1748,7 +1748,7 @@ export function AgentCreationWizard() {
               )}
 
               {/* Final Control Buttons Bar */}
-              <div className="border-t border-slate-200 dark:border-slate-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="border-t border-stone-200 dark:border-stone-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div className="flex gap-2">
                   <Button
                     type="button"
@@ -1779,7 +1779,7 @@ export function AgentCreationWizard() {
                       variant="outline"
                       size="sm"
                       onClick={() => setIsTestCallOpen(true)}
-                      className="text-xs text-indigo-600 gap-1 border-indigo-200"
+                      className="text-xs text-violet-600 gap-1 border-violet-200"
                     >
                       <PhoneCall className="h-3.5 w-3.5" />
                       Test Call
@@ -1813,7 +1813,7 @@ export function AgentCreationWizard() {
 
           {/* Stepper Navigation (Steps 1 - 11) */}
           {currentStep < 12 && (
-            <div className="border-t border-slate-200 dark:border-slate-800 mt-8 pt-4 flex items-center justify-between">
+            <div className="border-t border-stone-200 dark:border-stone-800 mt-8 pt-4 flex items-center justify-between">
               <Button
                 type="button"
                 variant="outline"
@@ -1831,7 +1831,7 @@ export function AgentCreationWizard() {
                   type="button"
                   size="sm"
                   onClick={() => setCurrentStep((prev) => Math.min(11, prev + 1))}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1 text-xs font-semibold"
+                  className="bg-violet-600 hover:bg-violet-700 text-white gap-1 text-xs font-semibold"
                 >
                   Next Step
                   <ArrowRight className="h-3.5 w-3.5" />
@@ -1842,7 +1842,7 @@ export function AgentCreationWizard() {
                   size="sm"
                   onClick={handleGenerateBundle}
                   disabled={generatingBundle}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1 text-xs font-semibold"
+                  className="bg-violet-600 hover:bg-violet-700 text-white gap-1 text-xs font-semibold"
                 >
                   <Sparkles className="h-3.5 w-3.5 text-amber-300" />
                   Generate Agent Bundle

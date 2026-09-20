@@ -125,11 +125,11 @@ export default function TeamPage() {
     <div className="space-y-6 max-w-4xl">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Users className="h-6 w-6 text-indigo-600" />
+          <h1 className="text-2xl font-bold text-stone-900 dark:text-white flex items-center gap-2">
+            <Users className="h-6 w-6 text-violet-600" />
             Team Members & Access
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-stone-500 mt-1">
             Invite colleagues to create voice agents, launch campaigns, and analyze transcripts.
           </p>
         </div>
@@ -137,7 +137,7 @@ export default function TeamPage() {
         {canManage && (
           <Button
             onClick={() => setIsInviteOpen(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5"
+            className="bg-violet-600 hover:bg-violet-700 text-white flex items-center gap-1.5"
           >
             <UserPlus className="h-4 w-4" />
             Invite Colleague
@@ -153,9 +153,9 @@ export default function TeamPage() {
         </Card>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 shadow-xs">
+      <div className="overflow-hidden rounded-xl border border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-950 shadow-[0_8px_30px_rgba(30,20,60,0.08)]">
         <table className="w-full text-left text-xs">
-          <thead className="border-b border-slate-200 bg-slate-50 p-2 font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+          <thead className="border-b border-stone-200 bg-stone-50 p-2 font-semibold text-stone-500 dark:border-stone-800 dark:bg-stone-900">
             <tr>
               <th className="p-3.5">User</th>
               <th className="p-3.5">Role</th>
@@ -163,41 +163,41 @@ export default function TeamPage() {
               {canManage && <th className="p-3.5 text-right">Manage</th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
             {loading && (
               <tr>
-                <td colSpan={canManage ? 4 : 3} className="p-3.5 text-slate-500">
+                <td colSpan={canManage ? 4 : 3} className="p-3.5 text-stone-500">
                   Loading team…
                 </td>
               </tr>
             )}
             {!loading &&
               members.map((member) => (
-                <tr key={member.user_id} className="hover:bg-slate-50/80 dark:hover:bg-slate-900/50">
+                <tr key={member.user_id} className="hover:bg-stone-50/80 dark:hover:bg-stone-900/50">
                   <td className="p-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-950 font-semibold text-indigo-700 dark:text-indigo-300">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-950 font-semibold text-violet-700 dark:text-violet-300">
                         {(member.email || "?").charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <span className="font-semibold text-slate-900 dark:text-white block">
+                        <span className="font-semibold text-stone-900 dark:text-white block">
                           {member.email || member.user_id.slice(0, 8)}
                           {member.user_id === yourUserId && (
-                            <span className="ml-2 text-[10px] font-normal text-slate-400">(you)</span>
+                            <span className="ml-2 text-[10px] font-normal text-stone-400">(you)</span>
                           )}
                         </span>
-                        <span className="text-slate-400 text-[11px] font-mono">
+                        <span className="text-stone-400 text-[11px] font-mono">
                           {member.user_id.slice(0, 8)}
                         </span>
                       </div>
                     </div>
                   </td>
-                  <td className="p-3.5 capitalize font-medium text-slate-700 dark:text-slate-300">
+                  <td className="p-3.5 capitalize font-medium text-stone-700 dark:text-stone-300">
                     {canManage && member.user_id !== yourUserId ? (
                       <select
                         value={member.role}
                         onChange={(e) => handleRoleChange(member.user_id, e.target.value)}
-                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+                        className="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs dark:border-stone-700 dark:bg-stone-900"
                       >
                         <option value="viewer">VIEWER</option>
                         <option value="member">MEMBER</option>
@@ -218,7 +218,7 @@ export default function TeamPage() {
                       </Badge>
                     )}
                   </td>
-                  <td className="p-3.5 text-slate-400">
+                  <td className="p-3.5 text-stone-400">
                     {member.role === "owner"
                       ? "Full Tenant Admin"
                       : member.role === "admin"
@@ -261,7 +261,7 @@ export default function TeamPage() {
           ) : (
             <>
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
                   Email Address
                 </label>
                 <Input
@@ -274,13 +274,13 @@ export default function TeamPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
                   Assigned Role
                 </label>
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"
                 >
                   <option value="viewer">Viewer (Read only)</option>
                   <option value="member">Member (Create & run campaigns)</option>
@@ -292,7 +292,7 @@ export default function TeamPage() {
                 <Button type="button" variant="outline" onClick={() => setIsInviteOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                <Button type="submit" className="bg-violet-600 hover:bg-violet-700 text-white">
                   Send Invite
                 </Button>
               </div>

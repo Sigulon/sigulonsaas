@@ -44,12 +44,14 @@ export default function AgentsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Bot className="h-6 w-6 text-indigo-600" />
-            AI Voice Agents
+          <h1 className="text-2xl font-bold tracking-tight text-stone-900 dark:text-white flex items-center gap-2">
+            <Bot className="h-6 w-6 text-violet-600" />
+            Your calling team
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Live voice agents with Indian language models (Hindi, Telugu, Tamil, Kannada, Indian English, etc.).
+          <p className="text-xs text-stone-500 mt-1">
+            {agents.length === 0
+              ? "Hire your first AI team member — Hindi, Telugu, Tamil, Kannada, Indian English, and more."
+              : `${agents.filter((a) => a.status === "active").length} of ${agents.length} agents on shift.`}
           </p>
         </div>
 
@@ -67,7 +69,7 @@ export default function AgentsPage() {
           <Button
             variant="outline"
             onClick={() => setIsWebTesterOpen(true)}
-            className="text-xs flex items-center gap-1.5 border-indigo-200 text-indigo-700 dark:border-indigo-900 dark:text-indigo-300 hover:bg-indigo-50"
+            className="text-xs flex items-center gap-1.5 border-violet-200 text-violet-700 dark:border-violet-900 dark:text-violet-300 hover:bg-violet-50"
           >
             <Headphones className="h-3.5 w-3.5" />
             Web Voice Tester
@@ -75,7 +77,8 @@ export default function AgentsPage() {
 
           <Link href="/agents/builder">
             <Button
-              className="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 text-xs shadow-sm font-semibold h-9 px-4"
+              variant="gold"
+              className="flex items-center gap-1.5 text-xs font-semibold h-9 px-4"
             >
               <Plus className="h-4 w-4" />
               Build Voice Agent
@@ -86,12 +89,12 @@ export default function AgentsPage() {
 
       {/* Agents Grid */}
       {loading ? (
-        <div className="py-20 flex flex-col items-center justify-center text-slate-400">
-          <Loader2 className="h-8 w-8 animate-spin text-indigo-600 mb-2" />
+        <div className="py-20 flex flex-col items-center justify-center text-stone-400">
+          <Loader2 className="h-8 w-8 animate-spin text-violet-600 mb-2" />
           <span className="text-sm">Fetching your voice agents...</span>
         </div>
       ) : loadError ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30 p-12 text-center">
+        <div className="rounded-[20px] border border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30 p-12 text-center">
           <h3 className="mt-3 text-base font-semibold text-red-700 dark:text-red-300">
             Couldn&apos;t load agents
           </h3>
@@ -100,16 +103,16 @@ export default function AgentsPage() {
           </p>
         </div>
       ) : agents.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 p-12 text-center">
-          <Bot className="mx-auto h-12 w-12 text-slate-400" />
-          <h3 className="mt-3 text-base font-semibold text-slate-900 dark:text-white">
-            No Voice Agents Found
+        <div className="rounded-[20px] border-2 border-dashed border-stone-200 dark:border-stone-800 p-12 text-center">
+          <Bot className="mx-auto h-12 w-12 text-stone-400" />
+          <h3 className="mt-3 text-base font-semibold text-stone-900 dark:text-white">
+            No team members yet
           </h3>
-          <p className="mt-1 text-xs text-slate-500 max-w-sm mx-auto">
-            Create an Indian language AI voice agent with custom prompts, live tools, and Plivo voice execution.
+          <p className="mt-1 text-xs text-stone-500 max-w-sm mx-auto">
+            Describe your business once and Sigulon designs the voice flow, questions, and safeguards for your first agent.
           </p>
           <Link href="/agents/builder">
-            <Button className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white">
+            <Button className="mt-4">
               <Sparkles className="h-4 w-4 mr-2" />
               Build Voice Agent
             </Button>

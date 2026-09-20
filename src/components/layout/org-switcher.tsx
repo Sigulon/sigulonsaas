@@ -111,22 +111,22 @@ export function OrgSwitcher() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         disabled={switching}
-        className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100/80 px-3 py-1.5 transition-colors dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800/80"
+        className="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50 hover:bg-stone-100/80 px-3 py-1.5 transition-colors dark:border-stone-800 dark:bg-stone-900 dark:hover:bg-stone-800/80"
       >
-        <Building2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-        <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 max-w-[140px] sm:max-w-[200px] truncate">
+        <Building2 className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+        <span className="text-xs font-semibold text-stone-800 dark:text-stone-200 max-w-[140px] sm:max-w-[200px] truncate">
           {switching ? "Switching..." : (activeOrg?.name ?? "Loading…")}
         </span>
-        <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+        <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 dark:bg-vndigo-950 dark:text-violet-300">
           TENANT
         </span>
-        <ChevronsUpDown className="h-3.5 w-3.5 text-slate-400" />
+        <ChevronsUpDown className="h-3.5 w-3.5 text-stone-400" />
       </button>
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute left-0 top-full mt-2 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg shadow-slate-900/10 z-50 dark:border-slate-800 dark:bg-slate-900">
-          <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        <div className="absolute left-0 top-full mt-2 w-64 rounded-xl border border-stone-200 bg-white p-1.5 shadow-lg shadow-stone-900/10 z-50 dark:border-stone-800 dark:bg-stone-900">
+          <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-400">
             Switch Organization
           </div>
 
@@ -139,24 +139,24 @@ export function OrgSwitcher() {
                   onClick={() => handleSwitchOrg(org.id)}
                   className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-lg transition-colors text-left ${
                     isSelected
-                      ? "bg-indigo-50 text-indigo-700 font-semibold dark:bg-indigo-950/60 dark:text-indigo-300"
-                      : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                      ? "bg-violet-50 text-violet-700 font-semibold dark:bg-violet-950/60 dark:text-violet-300"
+                      : "text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
                   }`}
                 >
                   <span className="truncate">{org.name}</span>
-                  {isSelected && <Check className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />}
+                  {isSelected && <Check className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400 shrink-0" />}
                 </button>
               );
             })}
           </div>
 
-          <div className="border-t border-slate-100 pt-1 mt-1 dark:border-slate-800">
+          <div className="border-t border-stone-100 pt-1 mt-1 dark:border-stone-800">
             <button
               onClick={() => {
                 setIsOpen(false);
                 setIsCreateOpen(true);
               }}
-              className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-indigo-600 hover:bg-indigo-50/70 rounded-lg transition-colors dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+              className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-violet-600 hover:bg-violet-50/70 rounded-lg transition-colors dark:text-violet-400 dark:hover:bg-violet-950/40"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Create New Organization</span>
@@ -172,12 +172,12 @@ export function OrgSwitcher() {
         title="Create New Organization Tenant"
       >
         <form onSubmit={handleCreateOrg} className="space-y-4">
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-stone-500">
             Each organization functions as an isolated multi-tenant workspace with its own voice agents, campaigns, contacts, and call history.
           </p>
 
           <div>
-            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
               Organization Name
             </label>
             <Input
@@ -203,7 +203,7 @@ export function OrgSwitcher() {
             <Button
               type="submit"
               disabled={loading || !newOrgName.trim()}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs flex items-center gap-1.5"
+              className="bg-violet-600 hover:bg-violet-700 text-white text-xs flex items-center gap-1.5"
             >
               {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Create Organization

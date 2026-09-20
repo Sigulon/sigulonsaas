@@ -111,8 +111,8 @@ export default function AgentDetailPage({
 
   if (!agent) {
     return (
-      <div className="py-20 flex flex-col items-center justify-center text-slate-400">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600 mb-2" />
+      <div className="py-20 flex flex-col items-center justify-center text-stone-400">
+        <Loader2 className="h-8 w-8 animate-spin text-violet-600 mb-2" />
         <span>Loading voice agent details...</span>
       </div>
     );
@@ -126,10 +126,10 @@ export default function AgentDetailPage({
       <div className="flex items-center justify-between">
         <Link
           href="/agents"
-          className="flex items-center gap-2 text-xs font-medium text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
+          className="flex items-center gap-2 text-xs font-medium text-stone-500 hover:text-stone-900 dark:hover:text-stone-100"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to all agents
+          Back to your team
         </Link>
 
         <div className="flex items-center gap-3">
@@ -137,37 +137,37 @@ export default function AgentDetailPage({
             size="sm"
             variant="outline"
             onClick={() => setIsWebTesterOpen(true)}
-            className="border-indigo-200 text-indigo-700 dark:border-indigo-900 dark:text-indigo-300 hover:bg-indigo-50 flex items-center gap-1.5"
+            className="border-violet-200 text-violet-700 dark:border-violet-900 dark:text-violet-300 hover:bg-violet-50 flex items-center gap-1.5"
           >
             <Headphones className="h-3.5 w-3.5" />
-            Web Voice Test
+            Web voice test
           </Button>
 
           <Button
             size="sm"
             onClick={() => setIsTestCallOpen(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5"
+            className="bg-violet-600 hover:bg-violet-700 text-white flex items-center gap-1.5"
           >
             <PhoneCall className="h-3.5 w-3.5" />
-            Test Dial Agent
+            Test dial agent
           </Button>
         </div>
       </div>
 
       {/* Header Info */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-950">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-stone-200 bg-white p-6 dark:border-stone-800 dark:bg-stone-950">
         <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 dark:bg-violet-950 text-violet-600">
             <Bot className="h-7 w-7" />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-xl font-bold text-slate-900 dark:text-white">{agent.name}</h1>
+              <h1 className="text-xl font-bold text-stone-900 dark:text-white">{agent.name}</h1>
               <Badge variant={status === "active" ? "success" : "secondary"}>
                 {status.toUpperCase()}
               </Badge>
             </div>
-            <p className="text-xs text-slate-400 font-mono mt-0.5">
+            <p className="text-xs text-stone-400 font-mono mt-0.5">
               Agent ID: {agent.id}
             </p>
           </div>
@@ -176,17 +176,17 @@ export default function AgentDetailPage({
         {/* Assigned Number Pill */}
         <div className="flex items-center gap-3">
           {assignedNumber ? (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
-              <span className="text-[11px] text-slate-400 block">Attached Number</span>
-              <span className="font-mono text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 mt-0.5">
-                <Phone className="h-3.5 w-3.5 text-indigo-500" />
+            <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 dark:border-stone-800 dark:bg-stone-900">
+              <span className="text-[11px] text-stone-400 block">Attached Number</span>
+              <span className="font-mono text-sm font-semibold text-stone-800 dark:text-stone-200 flex items-center gap-1.5 mt-0.5">
+                <Phone className="h-3.5 w-3.5 text-violet-500" />
                 {assignedNumber.phone_number}
               </span>
             </div>
           ) : (
             <Link
               href="/phone-numbers"
-              className="text-xs flex items-center gap-1.5 border border-indigo-200 rounded-md px-3 py-2 text-indigo-600 hover:bg-indigo-50"
+              className="text-xs flex items-center gap-1.5 border border-violet-200 rounded-md px-3 py-2 text-violet-600 hover:bg-violet-50"
             >
               Register Inbound Number
             </Link>
@@ -205,7 +205,7 @@ export default function AgentDetailPage({
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
                     System Prompt Instructions
                   </label>
                   <Textarea
@@ -218,7 +218,7 @@ export default function AgentDetailPage({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
                     Introduction Greeting (Leave blank for callee to speak first)
                   </label>
                   <Input
@@ -239,20 +239,20 @@ export default function AgentDetailPage({
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
                     Agent Name
                   </label>
                   <Input value={name} onChange={(e) => setName(e.target.value)} required />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
                     Indian Language
                   </label>
                   <select
                     value={language}
                     onChange={(e) => setLanguage(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"
                   >
                     {INDIAN_LANGUAGES.map((lang) => (
                       <option key={lang.code} value={lang.code}>
@@ -263,13 +263,13 @@ export default function AgentDetailPage({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
                     Cartesia Sonic Voice
                   </label>
                   <select
                     value={voiceId}
                     onChange={(e) => setVoiceId(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"
                   >
                     {CARTESIA_VOICE_PRESETS.map((v) => (
                       <option key={v.id} value={v.id}>
@@ -280,13 +280,13 @@ export default function AgentDetailPage({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
                     Operational Status
                   </label>
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value as "active" | "paused")}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"
                   >
                     <option value="active">Active (Handling calls)</option>
                     <option value="paused">Paused</option>
@@ -297,7 +297,7 @@ export default function AgentDetailPage({
                   <Button
                     type="submit"
                     disabled={saving}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center gap-2"
+                    className="w-full bg-violet-600 hover:bg-violet-700 text-white flex items-center justify-center gap-2"
                   >
                     {saving ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -320,7 +320,7 @@ export default function AgentDetailPage({
 
       {/* Performance for this agent specifically */}
       <div className="space-y-4 pt-4">
-        <h3 className="text-base font-bold text-slate-900 dark:text-white">
+        <h3 className="text-base font-bold text-stone-900 dark:text-white">
           Calls Handled by {agent.name}
         </h3>
         <CallsTable initialCalls={calls} />

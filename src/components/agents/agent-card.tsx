@@ -105,53 +105,53 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
 
   return (
     <>
-      <Card className="flex flex-col justify-between hover:border-indigo-200 dark:hover:border-indigo-900/60 transition-all shadow-sm hover:shadow-md">
+      <Card className="flex flex-col justify-between hover:border-violet-200 dark:hover:border-violet-900/60 transition-all shadow-sm hover:shadow-md">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 dark:bg-violet-950 text-violet-600 dark:text-violet-400">
                 <Bot className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="font-semibold text-base text-slate-900 dark:text-white leading-snug">
+                <h3 className="font-semibold text-base text-stone-900 dark:text-white leading-snug">
                   {agent.name}
                 </h3>
-                <span className="text-[11px] text-slate-400 font-mono">
+                <span className="text-[11px] text-stone-400 font-mono">
                   Agent ID: {agent.id ? agent.id.slice(-8) : "—"}
                 </span>
               </div>
             </div>
 
             <Badge variant={agent.status === "active" ? "success" : "secondary"}>
-              {agent.status.toUpperCase()}
+              {agent.status === "active" ? "Working" : agent.status === "paused" ? "Paused" : agent.status}
             </Badge>
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
+        <CardContent className="space-y-3 text-xs text-stone-600 dark:text-stone-300">
           {/* Voice Model & Indian Language */}
-          <div className="flex items-center justify-between rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2.5">
+          <div className="flex items-center justify-between rounded-lg bg-stone-50 dark:bg-stone-800/60 p-2.5">
             <div className="flex items-center gap-2">
-              <Volume2 className="h-4 w-4 text-indigo-600" />
-              <span className="font-medium text-slate-800 dark:text-slate-200 text-xs">
+              <Volume2 className="h-4 w-4 text-violet-600" />
+              <span className="font-medium text-stone-800 dark:text-stone-200 text-xs">
                 {voice.name}
               </span>
             </div>
-            <span className="rounded-md bg-indigo-100 dark:bg-indigo-950 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+            <span className="rounded-md bg-violet-100 dark:bg-violet-950 px-2 py-0.5 text-[11px] font-bold text-violet-700 dark:text-violet-300">
               {langObj.name}
             </span>
           </div>
 
           {/* Assigned Phone Number */}
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-800 p-2.5">
+          <div className="flex items-center justify-between rounded-lg border border-stone-200 dark:border-stone-800 p-2.5">
             <div className="flex items-center gap-2">
-              <Phone className="h-4 w-4 text-slate-400" />
+              <Phone className="h-4 w-4 text-stone-400" />
               {assignedNumber ? (
-                <span className="font-mono font-semibold text-slate-900 dark:text-white">
+                <span className="font-mono font-semibold text-stone-900 dark:text-white">
                   {assignedNumber.phone_number}
                 </span>
               ) : (
-                <span className="text-slate-400 italic">No telephony line attached</span>
+                <span className="text-stone-400 italic">No telephony line attached</span>
               )}
             </div>
 
@@ -160,7 +160,7 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
                 size="sm"
                 variant="ghost"
                 onClick={handleOpenAttachModal}
-                className="h-6 text-[10px] px-1.5 text-slate-500 hover:text-indigo-600"
+                className="h-6 text-[10px] px-1.5 text-stone-500 hover:text-violet-600"
               >
                 Change
               </Button>
@@ -169,7 +169,7 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
                 size="sm"
                 variant="outline"
                 onClick={handleOpenAttachModal}
-                className="h-7 text-xs px-2 flex items-center gap-1 border-indigo-200 text-indigo-600 hover:bg-indigo-50"
+                className="h-7 text-xs px-2 flex items-center gap-1 border-violet-200 text-violet-600 hover:bg-violet-50"
               >
                 <PlusCircle className="h-3 w-3" />
                 Attach Line
@@ -179,22 +179,22 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
 
           {/* System Prompt snippet */}
           <div>
-            <span className="text-[11px] font-medium text-slate-400 block mb-1">
+            <span className="text-[11px] font-medium text-stone-400 block mb-1">
               Instructions & Script:
             </span>
-            <p className="line-clamp-3 rounded-lg bg-slate-50 dark:bg-slate-900 p-2.5 text-xs text-slate-600 dark:text-slate-400 font-mono">
+            <p className="line-clamp-3 rounded-lg bg-stone-50 dark:bg-stone-900 p-2.5 text-xs text-stone-600 dark:text-stone-400 font-mono">
               {agent.system_prompt || "No system prompt configured."}
             </p>
           </div>
         </CardContent>
 
-        <CardFooter className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2">
+        <CardFooter className="pt-2 border-t border-stone-100 dark:border-stone-800 flex flex-col gap-2">
           <div className="flex items-center justify-between w-full gap-2">
             <Button
               size="sm"
               variant="outline"
               onClick={() => setIsWebTesterOpen(true)}
-              className="flex-1 flex items-center justify-center gap-1.5 border-indigo-200 text-indigo-700 dark:border-indigo-900 dark:text-indigo-300 hover:bg-indigo-50"
+              className="flex-1 flex items-center justify-center gap-1.5 border-violet-200 text-violet-700 dark:border-violet-900 dark:text-violet-300 hover:bg-violet-50"
             >
               <Headphones className="h-3.5 w-3.5" />
               Web Test Voice
@@ -203,7 +203,7 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
             <Button
               size="sm"
               onClick={() => setIsTestCallOpen(true)}
-              className="flex-1 flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="flex-1 flex items-center justify-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
             >
               <PhoneCall className="h-3.5 w-3.5" />
               Phone Dial
@@ -214,7 +214,7 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
             size="sm"
             variant="ghost"
             onClick={() => setIsEditorOpen(true)}
-            className="w-full text-xs text-slate-500 hover:text-slate-900 flex items-center justify-center gap-1"
+            className="w-full text-xs text-stone-500 hover:text-stone-900 flex items-center justify-center gap-1"
           >
             <Edit className="h-3 w-3" />
             Configure Agent Settings
@@ -252,7 +252,7 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
         <form onSubmit={handleAttachNumber} className="space-y-4 pt-2 text-xs">
           {availableNumbers.length > 0 && (
             <div>
-              <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block font-medium text-stone-700 dark:text-stone-300 mb-1">
                 Choose from Existing Plivo Numbers:
               </label>
               <select
@@ -261,7 +261,7 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
                   setSelectedExistingNumberId(e.target.value);
                   if (e.target.value) setCustomNumberInput("");
                 }}
-                className="w-full text-xs bg-white border border-slate-200 dark:bg-slate-900 dark:border-slate-800 rounded-lg p-2 font-mono"
+                className="w-full text-xs bg-white border border-stone-200 dark:bg-stone-900 dark:border-stone-800 rounded-lg p-2 font-mono"
               >
                 <option value="">— Select an existing number —</option>
                 {availableNumbers.map((n) => (
@@ -274,13 +274,13 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
           )}
 
           <div className="relative flex py-1 items-center">
-            <div className="grow border-t border-slate-200 dark:border-slate-800"></div>
-            <span className="shrink mx-2 text-[10px] uppercase text-slate-400 font-semibold">Or enter new number</span>
-            <div className="grow border-t border-slate-200 dark:border-slate-800"></div>
+            <div className="grow border-t border-stone-200 dark:border-stone-800"></div>
+            <span className="shrink mx-2 text-[10px] uppercase text-stone-400 font-semibold">Or enter new number</span>
+            <div className="grow border-t border-stone-200 dark:border-stone-800"></div>
           </div>
 
           <div>
-            <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block font-medium text-stone-700 dark:text-stone-300 mb-1">
               Add New Plivo Number (E.164 format):
             </label>
             <Input
@@ -304,7 +304,7 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
           <div className="flex items-center justify-between pt-2">
             <Link
               href="/phone-numbers"
-              className="text-indigo-600 hover:underline flex items-center gap-1 text-[11px]"
+              className="text-violet-600 hover:underline flex items-center gap-1 text-[11px]"
             >
               <Radio className="h-3 w-3" />
               Manage All Numbers
@@ -323,7 +323,7 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
                 type="submit"
                 size="sm"
                 disabled={attachingNumber || (!selectedExistingNumberId && !customNumberInput.trim())}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                className="bg-violet-600 hover:bg-violet-700 text-white"
               >
                 {attachingNumber ? (
                   <>

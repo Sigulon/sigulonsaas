@@ -116,11 +116,11 @@ export function TestCallDialog({ isOpen, onClose, defaultAgentId }: TestCallDial
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950">
             <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
           </div>
-          <h3 className="text-lg font-medium text-slate-900 dark:text-white">Plivo Call Dispatched!</h3>
-          <p className="text-sm text-slate-500">
-            Plivo is placing your outbound voice call to <span className="font-semibold text-slate-800 dark:text-slate-200">{phoneNumber}</span>. Your phone will ring shortly.
+          <h3 className="text-lg font-medium text-stone-900 dark:text-white">Plivo Call Dispatched!</h3>
+          <p className="text-sm text-stone-500">
+            Plivo is placing your outbound voice call to <span className="font-semibold text-stone-800 dark:text-stone-200">{phoneNumber}</span>. Your phone will ring shortly.
           </p>
-          <div className="rounded-lg bg-slate-100 dark:bg-slate-800 p-2.5 text-xs font-mono text-slate-600 dark:text-slate-400">
+          <div className="rounded-lg bg-stone-100 dark:bg-stone-800 p-2.5 text-xs font-mono text-stone-600 dark:text-stone-400">
             Plivo Call ID: {successResult.callId}
           </div>
           <Button className="w-full mt-2" onClick={onClose}>
@@ -145,7 +145,7 @@ export function TestCallDialog({ isOpen, onClose, defaultAgentId }: TestCallDial
                   !error.toLowerCase().includes("not valid"))) && (
                 <a
                   href="/phone-numbers"
-                  className="text-xs text-indigo-600 underline font-medium hover:text-indigo-800 ml-6"
+                  className="text-xs text-violet-600 underline font-medium hover:text-violet-800 ml-6"
                 >
                   Configure Plivo Credentials &rarr;
                 </a>
@@ -154,13 +154,13 @@ export function TestCallDialog({ isOpen, onClose, defaultAgentId }: TestCallDial
           )}
 
           <div>
-            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
               Select Voice Agent
             </label>
             <select
               value={selectedAgentId}
               onChange={(e) => setSelectedAgentId(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+              className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"
               required
             >
               {agents.length === 0 && <option value="">No agents in database yet</option>}
@@ -174,13 +174,13 @@ export function TestCallDialog({ isOpen, onClose, defaultAgentId }: TestCallDial
 
           {availableNumbers.length > 0 && (
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
                 Caller ID (Plivo Number)
               </label>
               <select
                 value={callerNumber}
                 onChange={(e) => setCallerNumber(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"
               >
                 {availableNumbers.map((num) => (
                   <option key={num} value={num}>
@@ -192,7 +192,7 @@ export function TestCallDialog({ isOpen, onClose, defaultAgentId }: TestCallDial
           )}
 
           <div>
-            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">
               Destination Phone Number (E.164 format)
             </label>
             <Input
@@ -202,7 +202,7 @@ export function TestCallDialog({ isOpen, onClose, defaultAgentId }: TestCallDial
               onChange={(e) => setPhoneNumber(e.target.value)}
               required
             />
-            <span className="text-[11px] text-slate-400 mt-1 block">
+            <span className="text-[11px] text-stone-400 mt-1 block">
               Include country code (+91 for India, +1 for US/Canada, etc.).
             </span>
           </div>
@@ -214,7 +214,7 @@ export function TestCallDialog({ isOpen, onClose, defaultAgentId }: TestCallDial
             <Button
               type="submit"
               disabled={loading || !phoneNumber || !selectedAgentId}
-              className="bg-indigo-600 hover:bg-indigo-700 flex items-center gap-2"
+              className="bg-violet-600 hover:bg-violet-700 flex items-center gap-2"
             >
               {loading ? (
                 <>

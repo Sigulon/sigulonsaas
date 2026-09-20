@@ -128,7 +128,7 @@ export function AgentEditorDialog({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
               Agent Name
             </label>
             <Input
@@ -137,21 +137,21 @@ export function AgentEditorDialog({
               placeholder="e.g. hindi-customer-agent"
               required
             />
-            <span className="text-[10px] text-slate-400 mt-1 block">
+            <span className="text-[10px] text-stone-400 mt-1 block">
               Alphanumeric characters, dashes and underscores.
             </span>
           </div>
 
           {/* Indian Language Dropdown */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
-              <Languages className="h-3.5 w-3.5 text-indigo-600" />
+            <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1 flex items-center gap-1">
+              <Languages className="h-3.5 w-3.5 text-violet-600" />
               Indian Language
             </label>
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+              className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"
             >
               {INDIAN_LANGUAGES.map((lang) => (
                 <option key={lang.code} value={lang.code}>
@@ -164,8 +164,8 @@ export function AgentEditorDialog({
 
         {/* Indian Voice Selection */}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1">
-            <Volume2 className="h-3.5 w-3.5 text-indigo-600" />
+          <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1.5 flex items-center gap-1">
+            <Volume2 className="h-3.5 w-3.5 text-violet-600" />
             Voice Model
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-48 overflow-y-auto pr-1">
@@ -177,17 +177,17 @@ export function AgentEditorDialog({
                   onClick={() => setVoiceId(voice.id)}
                   className={`cursor-pointer rounded-xl border p-2.5 transition-all ${
                     isSelected
-                      ? "border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/20 dark:bg-indigo-950/40"
-                      : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950"
+                      ? "border-violet-600 bg-violet-50/60 ring-2 ring-violet-500/20 dark:bg-violet-950/40"
+                      : "border-stone-200 bg-white hover:border-stone-300 dark:border-stone-800 dark:bg-stone-950"
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <span className="font-semibold text-xs text-stone-900 dark:text-white flex items-center gap-1.5">
                       {voice.name}
                     </span>
                   </div>
-                  <span className="text-[10px] text-indigo-600 font-medium">{voice.accent}</span>
-                  <p className="mt-1 text-[11px] text-slate-500 line-clamp-2">{voice.description}</p>
+                  <span className="text-[10px] text-violet-600 font-medium">{voice.accent}</span>
+                  <p className="mt-1 text-[11px] text-stone-500 line-clamp-2">{voice.description}</p>
                 </div>
               );
             })}
@@ -197,11 +197,11 @@ export function AgentEditorDialog({
         {/* System Prompt */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
+            <label className="text-xs font-semibold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-violet-600" />
               Agent Personality & System Prompt
             </label>
-            <span className="text-[11px] text-slate-400">Specify language rules, guidelines, & goals</span>
+            <span className="text-[11px] text-stone-400">Specify language rules, guidelines, & goals</span>
           </div>
           <Textarea
             rows={5}
@@ -214,13 +214,13 @@ export function AgentEditorDialog({
         </div>
 
         {/* Introduction / Turn-taking convention */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-900/50 space-y-2">
+        <div className="rounded-xl border border-stone-200 bg-stone-50/70 p-3.5 dark:border-stone-800 dark:bg-stone-900/50 space-y-2">
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+              <span className="text-xs font-semibold text-stone-800 dark:text-stone-200">
                 Outbound Turn-taking: Callee Speaks First
               </span>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-stone-500">
                 Keep the opening greeting empty for outbound calls so the agent waits for the human to answer and say &quot;Hello?&quot;.
               </p>
             </div>
@@ -228,13 +228,13 @@ export function AgentEditorDialog({
               type="checkbox"
               checked={calleeSpeaksFirst}
               onChange={(e) => setCalleeSpeaksFirst(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+              className="h-4 w-4 rounded border-stone-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
             />
           </div>
 
           {!calleeSpeaksFirst && (
             <div className="pt-2">
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                 Custom Introduction Greeting
               </label>
               <Input
@@ -247,36 +247,36 @@ export function AgentEditorDialog({
         </div>
 
         {/* Voice Intelligence & Tools Configuration */}
-        <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3.5 dark:border-indigo-950 dark:bg-indigo-950/20 space-y-3">
+        <div className="rounded-xl border border-violet-100 bg-violet-50/40 p-3.5 dark:border-violet-950 dark:bg-violet-950/20 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
+            <span className="text-xs font-bold text-violet-950 dark:text-violet-200">
               Voice Intelligence & Tools
             </span>
-            <Badge variant="outline" className="text-[10px] bg-white dark:bg-slate-900 border-indigo-200 text-indigo-600 font-mono">
+            <Badge variant="outline" className="text-[10px] bg-white dark:bg-stone-900 border-violet-200 text-violet-600 font-mono">
               Line SDK Runtime
             </Badge>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                 LLM Intelligence Engine
               </label>
                 <select
                 value={llmProvider}
                 onChange={() => setLlmProvider("openrouter")}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                className="w-full rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-900 dark:border-stone-800 dark:bg-stone-950 dark:text-white"
               >
                 <option value="openrouter">OpenRouter (Gemini 2.5 Flash - Connected)</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                 In-Call Live Tools
               </label>
               <div className="space-y-1.5 pt-0.5">
-                <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                <label className="flex items-center gap-2 text-xs text-stone-700 dark:text-stone-300 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={enabledTools.includes("check_availability")}
@@ -287,12 +287,12 @@ export function AgentEditorDialog({
                         setEnabledTools(enabledTools.filter((t) => t !== "check_availability"));
                       }
                     }}
-                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    className="rounded border-stone-300 text-violet-600 focus:ring-violet-500"
                   />
                   <span>📅 Check Appointment Availability</span>
                 </label>
 
-                <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                <label className="flex items-center gap-2 text-xs text-stone-700 dark:text-stone-300 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={enabledTools.includes("pricing_lookup")}
@@ -303,7 +303,7 @@ export function AgentEditorDialog({
                         setEnabledTools(enabledTools.filter((t) => t !== "pricing_lookup"));
                       }
                     }}
-                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    className="rounded border-stone-300 text-violet-600 focus:ring-violet-500"
                   />
                   <span>💰 In-Call Pricing & Estimates</span>
                 </label>
@@ -316,11 +316,11 @@ export function AgentEditorDialog({
         <div className="flex items-center justify-between pt-2">
           {isEditing ? (
             <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-500">Status:</label>
+              <label className="text-xs text-stone-500">Status:</label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as "active" | "paused")}
-                className="rounded-md border border-slate-200 text-xs px-2 py-1 dark:border-slate-800 dark:bg-slate-900"
+                className="rounded-md border border-stone-200 text-xs px-2 py-1 dark:border-stone-800 dark:bg-stone-900"
               >
                 <option value="active">Active</option>
                 <option value="paused">Paused</option>
@@ -332,7 +332,7 @@ export function AgentEditorDialog({
             <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+            <Button type="submit" disabled={loading} className="bg-violet-600 hover:bg-violet-700 text-white">
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
