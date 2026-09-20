@@ -62,6 +62,7 @@ export function Modal({
       >
         <button
           onClick={onClose}
+          aria-label="Close dialog"
           className="absolute right-4 top-4 rounded-lg p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-800 dark:hover:text-stone-200"
         >
           <X className="h-5 w-5" />
@@ -126,6 +127,7 @@ export function Sheet({ isOpen, onClose, title, description, children }: SheetPr
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="rounded-lg p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-800 dark:hover:text-stone-200"
           >
             <X className="h-5 w-5" />

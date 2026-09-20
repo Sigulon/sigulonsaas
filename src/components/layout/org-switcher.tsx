@@ -117,7 +117,7 @@ export function OrgSwitcher() {
         <span className="text-xs font-semibold text-stone-800 dark:text-stone-200 max-w-[140px] sm:max-w-[200px] truncate">
           {switching ? "Switching..." : (activeOrg?.name ?? "Loading…")}
         </span>
-        <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 dark:bg-vndigo-950 dark:text-violet-300">
+        <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 dark:bg-violet-950 dark:text-violet-300">
           TENANT
         </span>
         <ChevronsUpDown className="h-3.5 w-3.5 text-stone-400" />

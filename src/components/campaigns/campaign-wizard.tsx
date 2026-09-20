@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Papa from "papaparse";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -39,19 +39,16 @@ export function CampaignWizard({
 }: CampaignWizardProps) {
   const [step, setStep] = useState<"details" | "upload" | "review">("details");
   const [campaignName, setCampaignName] = useState("");
-  const [selectedAgentId, setSelectedAgentId] = useState(agents[0]?.id || "");
+  const [selectedAgentId, setSelectedAgentId] = useState("");
   const [parsedContacts, setParsedContacts] = useState<ParsedContact[]>([]);
   const [fileName, setFileName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Agents load after mount on the campaigns page — adopt the first agent
-  // once available instead of leaving Continue permanently disabled.
-  useEffect(() => {
-    if (!selectedAgentId && agents.length > 0 && agents[0]?.id) {
-      setSelectedAgentId(agents[0].id);
-    }
-  }, [agents, selectedAgentId]);
+  // Agents load after mount on the campaigns page — fall back to the first
+  // agent until the user picks one, instead of leaving Continue disabled.
+  // Derived during render (no setState-in-effect) so lint stays clean.
+  const effectiveAgentId = selectedAgentId || agents[0]?.id || "";
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -110,7 +107,7 @@ export function CampaignWizard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: campaignName,
-          agentId: selectedAgentId,
+          agentId: effectiveAgentId,
           contacts: parsedContacts,
         }),
       });
@@ -181,7 +178,7 @@ export function CampaignWizard({
                 Assign AI Voice Agent
               </label>
               <select
-                value={selectedAgentId}
+                value={effectiveAgentId}
                 onChange={(e) => setSelectedAgentId(e.target.value)}
                 className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"
               >
@@ -195,7 +192,7 @@ export function CampaignWizard({
 
             <div className="flex justify-end pt-2">
               <Button
-                disabled={!campaignName.trim() || !selectedAgentId}
+                disabled={!campaignName.trim() || !effectiveAgentId}
                 onClick={() => setStep("upload")}
                 className="bg-violet-600 hover:bg-violet-700"
               >
