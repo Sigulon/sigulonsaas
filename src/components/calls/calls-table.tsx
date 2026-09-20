@@ -20,13 +20,13 @@ import { CallDetailSheet } from "./call-detail-sheet";
 interface CallsTableProps {
   initialCalls: CallRecord[];
   operationDirection?: "all" | "inbound" | "outbound";
-  operationPeriod?: "today" | "7d" | "30d";
+  operationPeriod?: "all" | "today" | "7d" | "30d";
 }
 
 export function CallsTable({
   initialCalls,
   operationDirection = "all",
-  operationPeriod = "7d",
+  operationPeriod = "all",
 }: CallsTableProps) {
   const calls = initialCalls;
   const [search, setSearch] = useState("");
@@ -170,7 +170,11 @@ export function CallsTable({
                         </span>
                       </td>
                       <td className="px-5 py-3.5 whitespace-nowrap font-mono font-medium text-slate-800 dark:text-slate-200">
-                        {formatPhoneNumber(call.to_number || "Unknown")}
+                        {formatPhoneNumber(
+                          call.direction === "inbound"
+                            ? call.from_number || call.to_number || "Unknown"
+                            : call.to_number || call.from_number || "Unknown"
+                        )}
                       </td>
                       <td className="px-5 py-3.5 whitespace-nowrap text-slate-600 dark:text-slate-400 flex items-center gap-1">
                         <Clock className="h-3 w-3 text-slate-400" />
@@ -213,8 +217,9 @@ export function CallsTable({
 
 function isCallWithinPeriod(
   createdAt: string | null | undefined,
-  period: "today" | "7d" | "30d"
+  period: "all" | "today" | "7d" | "30d"
 ) {
+  if (period === "all") return true;
   if (!createdAt) return true;
 
   const timestamp = new Date(createdAt).getTime();

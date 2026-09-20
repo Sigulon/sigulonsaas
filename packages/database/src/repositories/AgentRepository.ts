@@ -99,10 +99,31 @@ export class AgentRepository {
       agent.markModified("bundle");
     }
     if (updates.config) {
-      agent.config = {
-        ...agent.config,
-        ...updates.config,
-      } as CanonicalAgentConfig;
+      // Deep-merge one level: a partial `voice`/`instructions`/etc. payload
+      // must merge into the stored subdocument, not replace it and wipe
+      // sibling defaults (provider, model, speed, ...).
+      const merged: Record<string, unknown> = {
+        ...(agent.config as unknown as Record<string, unknown>),
+      };
+      for (const [key, value] of Object.entries(updates.config)) {
+        const existing = merged[key];
+        const bothPlainObjects =
+          value !== null &&
+          typeof value === "object" &&
+          !Array.isArray(value) &&
+          !(value instanceof Date) &&
+          existing !== null &&
+          typeof existing === "object" &&
+          !Array.isArray(existing) &&
+          !(existing instanceof Date);
+        merged[key] = bothPlainObjects
+          ? {
+              ...(existing as Record<string, unknown>),
+              ...(value as Record<string, unknown>),
+            }
+          : value;
+      }
+      agent.config = merged as unknown as CanonicalAgentConfig;
       agent.markModified("config");
     }
 
@@ -111,6 +132,7 @@ export class AgentRepository {
 
   /**
    * Publish an agent: creates an immutable AgentVersion snapshot and updates the agent's published pointer.
+   * Retries on duplicate versionNumber (11000) up to 5 attempts for concurrent publishes.
    */
   static async publish(data: {
     agentId: string | mongoose.Types.ObjectId;
@@ -118,48 +140,73 @@ export class AgentRepository {
     publishedBy?: string | mongoose.Types.ObjectId;
     changeSummary?: string;
   }): Promise<{ agent: IAgent; version: IAgentVersion }> {
-    return withTransaction(async (session) => {
-      const agent = await AgentModel.findOne({
-        _id: data.agentId,
-        organizationId: data.orgId,
-      }).session(session);
+    const MAX_PUBLISH_ATTEMPTS = 5;
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= MAX_PUBLISH_ATTEMPTS; attempt++) {
+      try {
+        return await withTransaction(async (session) => {
+          const agent = await AgentModel.findOne({
+            _id: data.agentId,
+            organizationId: data.orgId,
+          }).session(session);
 
-      if (!agent) {
-        throw new Error("Agent not found");
+          if (!agent) {
+            throw new Error("Agent not found");
+          }
+
+          const nextVersionNumber = (agent.publishedVersionNumber || 0) + 1;
+
+          const validPublishedBy =
+            data.publishedBy && mongoose.Types.ObjectId.isValid(data.publishedBy)
+              ? new mongoose.Types.ObjectId(data.publishedBy)
+              : undefined;
+
+          const version = new AgentVersionModel({
+            agentId: agent._id,
+            organizationId: agent.organizationId,
+            versionNumber: nextVersionNumber,
+            config: agent.config,
+            specification: agent.specification,
+            bundle: agent.bundle,
+            publishedBy: validPublishedBy,
+            changeSummary: data.changeSummary || `Version ${nextVersionNumber}`,
+          });
+          await version.save({ session });
+
+          agent.currentVersionId = version._id;
+          agent.publishedVersionNumber = nextVersionNumber;
+          agent.status = "active";
+          await agent.save({ session });
+
+          return { agent, version };
+        });
+      } catch (err: unknown) {
+        lastError = err;
+        const code = (err as { code?: number }).code;
+        const msg = err instanceof Error ? err.message : String(err);
+        const isDuplicateVersion =
+          code === 11000 || /agentId.*versionNumber|versionNumber.*duplicate|E11000/i.test(msg);
+        if (isDuplicateVersion && attempt < MAX_PUBLISH_ATTEMPTS) {
+          // Concurrent publish won this versionNumber; recompute and retry.
+          continue;
+        }
+        throw err;
       }
-
-      const nextVersionNumber = (agent.publishedVersionNumber || 0) + 1;
-
-      const validPublishedBy =
-        data.publishedBy && mongoose.Types.ObjectId.isValid(data.publishedBy)
-          ? new mongoose.Types.ObjectId(data.publishedBy)
-          : undefined;
-
-      const version = new AgentVersionModel({
-        agentId: agent._id,
-        organizationId: agent.organizationId,
-        versionNumber: nextVersionNumber,
-        config: agent.config,
-        specification: agent.specification,
-        bundle: agent.bundle,
-        publishedBy: validPublishedBy,
-        changeSummary: data.changeSummary || `Version ${nextVersionNumber}`,
-      });
-      await version.save({ session });
-
-      agent.currentVersionId = version._id;
-      agent.publishedVersionNumber = nextVersionNumber;
-      agent.status = "active";
-      await agent.save({ session });
-
-      return { agent, version };
-    });
+    }
+    throw lastError instanceof Error ? lastError : new Error("Publish failed after retries");
   }
 
   static async getVersion(
-    versionId: string | mongoose.Types.ObjectId
+    versionId: string | mongoose.Types.ObjectId,
+    orgId?: string | mongoose.Types.ObjectId
   ): Promise<IAgentVersion | null> {
     await connectToDatabase();
+    if (orgId) {
+      return AgentVersionModel.findOne({
+        _id: versionId,
+        organizationId: orgId,
+      }).exec();
+    }
     return AgentVersionModel.findById(versionId).exec();
   }
 

@@ -26,10 +26,13 @@ export class PhoneNumberRepository {
   }
 
   static async findByNumber(
-    phoneNumber: string
+    phoneNumber: string,
+    orgId?: string | mongoose.Types.ObjectId
   ): Promise<IPhoneNumber | null> {
     await connectToDatabase();
-    return PhoneNumberModel.findOne({ phoneNumber, status: "active" })
+    const query: Record<string, unknown> = { phoneNumber, status: "active" };
+    if (orgId) query.organizationId = orgId;
+    return PhoneNumberModel.findOne(query)
       .populate("agentId")
       .exec();
   }

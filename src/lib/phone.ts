@@ -22,6 +22,7 @@ export function normalizePhone(raw: string | null | undefined): string | null {
   if (!digits) return null;
 
   if (trimmed.startsWith("+")) {
+    if (digits.length < 7 || digits.length > 15) return null;
     return `+${digits}`;
   }
   if (digits.length === 11 && digits.startsWith("1")) {

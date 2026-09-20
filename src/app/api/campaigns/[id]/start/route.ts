@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
+import { canCreateAndRun } from "@/lib/roles";
 import {
   CampaignRepository,
   AgentRepository,
@@ -26,7 +27,14 @@ export async function POST(
   const requestStartedAt = performance.now();
   try {
     ({ id: campaignId } = await params);
-    const { orgId } = await getOrgContext();
+    const context = await getOrgContext();
+    if (!canCreateAndRun(context.role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
+    const { orgId } = context;
 
     let campaign = await CampaignRepository.findById(campaignId, orgId);
     if (!campaign) {
@@ -86,9 +94,16 @@ export async function POST(
       }),
     ]);
 
-    // Agent validation
+    // Agent validation — mirrors single-dial (calls/route.ts): a paused or
+    // draft agent must not be bulk-dialed either.
     if (!agent) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
+    if (agent.status !== "active") {
+      return NextResponse.json(
+        { error: "Agent is not active" },
+        { status: 422 }
+      );
     }
 
     // Outbound phone number validation
@@ -249,7 +264,9 @@ export async function POST(
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
+    return NextResponse.json({ error: errorMsg }, { status });
   } finally {
     if (lockHeld && campaignId) {
       await releaseDispatchLock(campaignId);

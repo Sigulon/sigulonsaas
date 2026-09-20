@@ -7,12 +7,31 @@ ValueError so a misconfigured agent never silently runs on an unexpected vendor.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 log = logging.getLogger("voice-runtime.providers.llm")
 
 SUPPORTED_LLM_PROVIDERS = ("openrouter",)
-OPENROUTER_GEMINI_25_FLASH = "google/gemini-2.5-flash"
+OPENROUTER_DEFAULT_MODEL_ENV_VAR = "OPENROUTER_MODEL"
+OPENROUTER_FALLBACK_MODEL = "google/gemini-2.5-flash"
+# Deprecated alias for the stored default — use default_openrouter_model() at runtime.
+OPENROUTER_GEMINI_25_FLASH = OPENROUTER_FALLBACK_MODEL
+
+
+def default_openrouter_model() -> str:
+    """Effective runtime LLM model. Override with the OPENROUTER_MODEL env var."""
+    return (
+        os.getenv(OPENROUTER_DEFAULT_MODEL_ENV_VAR, OPENROUTER_FALLBACK_MODEL)
+        or OPENROUTER_FALLBACK_MODEL
+    ).strip() or OPENROUTER_FALLBACK_MODEL
+
+
+def _resolve_runtime_model(model: str | None) -> str:
+    requested = (model or "").strip()
+    if requested:
+        return requested
+    return default_openrouter_model()
 
 
 def create_llm_service(
@@ -37,7 +56,7 @@ def create_llm_service(
         ) from exc
 
     base_url = "https://openrouter.ai/api/v1"
-    model = OPENROUTER_GEMINI_25_FLASH
+    model = _resolve_runtime_model(model)
 
     log.info("LLM: %s model=%s prompt_chars=%d", provider, model, len(system_prompt or ""))
     kwargs: dict[str, Any] = {
@@ -52,4 +71,11 @@ def create_llm_service(
     return OpenAILLMService(**kwargs)
 
 
-__all__ = ["SUPPORTED_LLM_PROVIDERS", "create_llm_service"]
+__all__ = [
+    "OPENROUTER_DEFAULT_MODEL_ENV_VAR",
+    "OPENROUTER_FALLBACK_MODEL",
+    "OPENROUTER_GEMINI_25_FLASH",
+    "SUPPORTED_LLM_PROVIDERS",
+    "create_llm_service",
+    "default_openrouter_model",
+]

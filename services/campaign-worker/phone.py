@@ -1,7 +1,7 @@
 """E.164 normalization — Python mirror of `src/lib/phone.ts`.
 
 Rules (identical to the TS side and the Phase 2 SQL backfill):
-  explicit '+'            → keep digits as-is
+  explicit '+' (7..15 digits) → keep digits as-is
   11 digits starting 1    → NANP
   bare 10 digits          → India (+91, primary market)
   12 digits starting 91   → India
@@ -23,7 +23,7 @@ def normalize_phone(raw: Optional[str]) -> Optional[str]:
     if not digits:
         return None
     if trimmed.startswith("+"):
-        return f"+{digits}"
+        return f"+{digits}" if 7 <= len(digits) <= 15 else None
     if len(digits) == 11 and digits.startswith("1"):
         return f"+{digits}"
     if len(digits) == 10:

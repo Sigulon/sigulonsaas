@@ -13,10 +13,22 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import Any, Optional
 
 log = logging.getLogger("voice-runtime.postcall")
+
+OPENROUTER_DEFAULT_MODEL_ENV_VAR = "OPENROUTER_MODEL"
+OPENROUTER_FALLBACK_MODEL = "google/gemini-2.5-flash"
+
+
+def default_openrouter_model() -> str:
+    """Effective runtime LLM model. Override with the OPENROUTER_MODEL env var."""
+    return (
+        os.getenv(OPENROUTER_DEFAULT_MODEL_ENV_VAR, OPENROUTER_FALLBACK_MODEL)
+        or OPENROUTER_FALLBACK_MODEL
+    ).strip() or OPENROUTER_FALLBACK_MODEL
 
 OUTCOMES = (
     "interested",
@@ -113,12 +125,13 @@ async def summarize_call(
     transcript: list[dict[str, str]],
     *,
     api_key: str,
-    model: str = "google/gemini-2.5-flash",
+    model: str | None = None,
     timeout_seconds: float = 20.0,
 ) -> Optional[dict[str, str]]:
     """Ask LLM for {summary, outcome}. None on any failure/empty input."""
     if not transcript or not api_key:
         return None
+    model = (model or "").strip() or default_openrouter_model()
     try:
         import httpx
 
@@ -160,7 +173,10 @@ async def summarize_call(
 
 
 __all__ = [
+    "OPENROUTER_DEFAULT_MODEL_ENV_VAR",
+    "OPENROUTER_FALLBACK_MODEL",
     "OUTCOMES",
+    "default_openrouter_model",
     "parse_summary_response",
     "summarize_call",
     "summary_prompt",

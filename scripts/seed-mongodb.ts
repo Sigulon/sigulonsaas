@@ -138,6 +138,7 @@ async function main() {
 
   for (const p of phoneNumbers) {
     const existing = await PhoneNumberModel.findOne({
+      organizationId: org._id,
       phoneNumber: p.phoneNumber,
     });
     if (!existing) {

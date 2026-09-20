@@ -29,12 +29,14 @@ export function buildDncIndex(rows: DncEntryRow[]): Map<string, Set<string>> {
   const index = new Map<string, Set<string>>();
   for (const row of rows) {
     if (!row?.org_id || !row?.normalized_phone) continue;
+    const normalized = normalizePhone(row.normalized_phone);
+    if (!normalized) continue;
     let set = index.get(row.org_id);
     if (!set) {
       set = new Set();
       index.set(row.org_id, set);
     }
-    set.add(row.normalized_phone);
+    set.add(normalized);
   }
   return index;
 }
@@ -46,8 +48,10 @@ export function isDncListed(
   index: Map<string, Set<string>>
 ): boolean {
   if (contact.do_not_call) return true;
-  const normalized =
-    contact.normalized_phone ?? normalizePhone(contact.phone_number);
+  const contactNorm =
+    normalizePhone(contact.normalized_phone ?? "") ??
+    normalizePhone(contact.phone_number);
+  const normalized = contactNorm;
   if (!normalized) return false;
   return index.get(orgId)?.has(normalized) ?? false;
 }
@@ -68,8 +72,10 @@ export function partitionContacts(
 ): PartitionedContacts {
   const out: PartitionedContacts = { callable: [], dnc: [], skipped: [] };
   for (const contact of contacts) {
-    const normalized =
-      contact.normalized_phone ?? normalizePhone(contact.phone_number);
+    const contactNorm =
+      normalizePhone(contact.normalized_phone ?? "") ??
+      normalizePhone(contact.phone_number);
+    const normalized = contactNorm;
     if (contact.do_not_call || (normalized && index.get(orgId)?.has(normalized))) {
       out.dnc.push(contact);
     } else if (!normalized) {

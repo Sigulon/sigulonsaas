@@ -51,10 +51,7 @@ export function OrgSwitcher() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const activeOrg = organizations.find((o) => o.id === activeOrgId) || {
-    id: activeOrgId,
-    name: "Acme Health & Wellness",
-  };
+  const activeOrg = organizations.find((o) => o.id === activeOrgId);
 
   const handleSwitchOrg = async (orgId: string) => {
     if (orgId === activeOrgId) {
@@ -118,7 +115,7 @@ export function OrgSwitcher() {
       >
         <Building2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
         <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 max-w-[140px] sm:max-w-[200px] truncate">
-          {switching ? "Switching..." : activeOrg.name}
+          {switching ? "Switching..." : (activeOrg?.name ?? "Loading…")}
         </span>
         <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
           TENANT

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
+import { canCreateAndRun } from "@/lib/roles";
 import {
   CampaignRepository,
   ContactRepository,
@@ -38,6 +39,13 @@ export async function GET() {
             return { id: agent._id?.toString(), name: agent.name };
           })()
         : undefined,
+      // Back-compat alias: older dashboard builds read `agent.name`.
+      agent: c.agentId && typeof c.agentId === "object"
+        ? (() => {
+            const agent = c.agentId as unknown as PopulatedAgent;
+            return { id: agent._id?.toString(), name: agent.name };
+          })()
+        : undefined,
       created_at: c.createdAt.toISOString(),
       updated_at: c.updatedAt.toISOString(),
     }));
@@ -45,13 +53,22 @@ export async function GET() {
     return NextResponse.json({ campaigns: formatted });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
+    return NextResponse.json({ error: errorMsg }, { status });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { orgId } = await getOrgContext();
+    const context = await getOrgContext();
+    if (!canCreateAndRun(context.role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
+    const { orgId } = context;
     const body = await req.json();
 
     const { name, agentId, contacts = [], concurrencyLimit = 5 } = body;
@@ -79,6 +96,7 @@ export async function POST(req: NextRequest) {
     }> = [];
 
     const seen = new Set<string>();
+    let invalidCount = 0;
     for (const c of contacts as {
       name?: string;
       phone_number: string;
@@ -86,7 +104,7 @@ export async function POST(req: NextRequest) {
       company?: string;
       metadata?: Record<string, unknown>;
     }[]) {
-      if (!c?.phone_number) continue;
+      if (!c?.phone_number) { invalidCount++; continue; }
       const normalized = normalizePhone(c.phone_number);
       if (normalized && !seen.has(normalized)) {
         seen.add(normalized);
@@ -98,7 +116,22 @@ export async function POST(req: NextRequest) {
           company: c.company || "",
           customFields: c.metadata || {},
         });
+      } else {
+        invalidCount++;
       }
+    }
+
+    // H-14: never create an undiallable campaign — reject up front and tell
+    // the caller how many rows were dropped.
+    if (normalizedContacts.length === 0) {
+      return NextResponse.json(
+        {
+          error: "No valid contacts: every supplied phone number was missing, unparseable, or a duplicate.",
+          invalid: invalidCount,
+          valid: 0,
+        },
+        { status: 400 }
+      );
     }
 
     // Bulk upsert into contacts collection
@@ -127,12 +160,15 @@ export async function POST(req: NextRequest) {
           status: campaign.status,
           total_contacts: campaign.totalContacts,
           calls_completed: campaign.callsCompleted,
+          invalid_contacts: invalidCount,
         },
       },
       { status: 201 }
     );
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
+    return NextResponse.json({ error: errorMsg }, { status });
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
+import { canCreateAndRun } from "@/lib/roles";
 import {
   generateAgentBundle,
   compileBundleToSystemPrompt,
@@ -10,7 +11,13 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    await getOrgContext(); // Require valid authenticated session
+    const { role } = await getOrgContext(); // Require valid authenticated session
+    if (!canCreateAndRun(role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
     const body = await req.json();
 
     const input = body.specification || body;
@@ -50,7 +57,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
-    const status = (err as NodeJS.ErrnoException).code === "UNAUTHORIZED" ? 401 : 500;
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
     return NextResponse.json({ error: errorMsg }, { status });
   }
 }

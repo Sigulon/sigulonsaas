@@ -28,15 +28,20 @@ export class BillingRepository {
     orgId: string | mongoose.Types.ObjectId
   ): Promise<IBillingAccount> {
     await connectToDatabase();
-    let account = await BillingAccountModel.findOne({ organizationId: orgId }).exec();
+    const account = await BillingAccountModel.findOneAndUpdate(
+      { organizationId: orgId },
+      {
+        $setOnInsert: {
+          organizationId: orgId,
+          balanceCredits: 0,
+          reservedCredits: 0,
+          currency: "INR",
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    ).exec();
     if (!account) {
-      account = new BillingAccountModel({
-        organizationId: orgId,
-        balanceCredits: 0,
-        reservedCredits: 0,
-        currency: "INR",
-      });
-      await account.save();
+      throw new Error("Failed to ensure billing account");
     }
     return account;
   }
@@ -222,9 +227,9 @@ export class BillingRepository {
       await ledger.save({ session });
 
       // Stamp call cost
-      await CallModel.findByIdAndUpdate(
-        data.callId,
-        { costCredits: usage },
+      await CallModel.findOneAndUpdate(
+        { _id: data.callId, organizationId: orgId },
+        { $set: { costCredits: usage } },
         { session }
       );
 
@@ -264,7 +269,14 @@ export class BillingRepository {
     metadata?: Record<string, unknown>;
   }): Promise<CreditState> {
     const orgId = data.organizationId;
-    const amount = Math.round(Math.abs(data.amount) * 100) / 100;
+    const raw = Number(data.amount);
+    if (!Number.isFinite(raw)) {
+      throw new Error("grantCredits amount must be a finite number");
+    }
+    const amount = Math.round(raw * 100) / 100;
+    if (amount === 0) {
+      throw new Error("grantCredits amount must be non-zero");
+    }
 
     return withTransaction(async (session) => {
       let account = await BillingAccountModel.findOne({

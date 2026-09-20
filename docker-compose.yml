@@ -17,8 +17,10 @@ services:
   mongodb:
     image: mongo:8
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
-    ports:
-      - "27017:27017"
+    # No host port publish by default: the DB holds sessions, configs, and
+    # billing state. Publish explicitly (e.g. a debug override file) only.
+    expose:
+      - "27017"
     volumes:
       - sigulon-mongodb:/data/db
     healthcheck:
@@ -47,11 +49,14 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "6379:6379"
+    command: ["redis-server", "/etc/redis/redis.conf", "--appendonly", "yes"]
+    # No host port publish by default: the queue, locks, and governors live
+    # here. Publish explicitly only for debugging.
+    expose:
+      - "6379"
     volumes:
       - sigulon-redis:/data
+      - ./infrastructure/redis/redis.conf:/etc/redis/redis.conf:ro
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

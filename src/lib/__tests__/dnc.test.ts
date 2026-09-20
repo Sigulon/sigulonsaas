@@ -17,14 +17,31 @@ const contact = (over: Partial<DncContact> = {}): DncContact => ({
 describe("buildDncIndex", () => {
   it("groups numbers by org, skipping blanks", () => {
     const index = buildDncIndex([
-      { org_id: "a", normalized_phone: "+91111" },
-      { org_id: "a", normalized_phone: "+91222" },
-      { org_id: "b", normalized_phone: "+91111" },
-      { org_id: "", normalized_phone: "+91333" },
+      { org_id: "a", normalized_phone: "+919876543211" },
+      { org_id: "a", normalized_phone: "+919876543212" },
+      { org_id: "b", normalized_phone: "+919876543211" },
+      { org_id: "", normalized_phone: "+919876543213" },
     ]);
-    expect(index.get("a")).toEqual(new Set(["+91111", "+91222"]));
-    expect(index.get("b")).toEqual(new Set(["+91111"]));
+    expect(index.get("a")).toEqual(new Set(["+919876543211", "+919876543212"]));
+    expect(index.get("b")).toEqual(new Set(["+919876543211"]));
     expect(index.has("")).toBe(false);
+  });
+
+  it("normalizes entries on index build, skipping unparseable rows", () => {
+    const index = buildDncIndex([
+      { org_id: "a", normalized_phone: "98765 43210" },
+      { org_id: "a", normalized_phone: "not-a-number" },
+    ]);
+    expect(index.get("a")).toEqual(new Set(["+919876543210"]));
+  });
+
+  it("matches a stored unnormalized contact value against index entries", () => {
+    const index = buildDncIndex([
+      { org_id: "a", normalized_phone: "+919876543210" },
+    ]);
+    expect(
+      isDncListed("a", contact({ normalized_phone: "98765 43210" }), index)
+    ).toBe(true);
   });
 });
 
@@ -66,24 +83,24 @@ describe("isDncListed", () => {
 describe("partitionContacts", () => {
   it("splits callable / dnc / skipped", () => {
     const index = buildDncIndex([
-      { org_id: "a", normalized_phone: "+91111" },
+      { org_id: "a", normalized_phone: "+919876543211" },
     ]);
     const out = partitionContacts(
       "a",
       [
-        contact({ id: "ok", phone_number: "+91222", normalized_phone: "+91222" }),
+        contact({ id: "ok", phone_number: "+919876543212", normalized_phone: "+919876543212" }),
         contact({ id: "flag", do_not_call: true }),
         contact({
           id: "listed",
-          phone_number: "+91111",
-          normalized_phone: "+91111",
+          phone_number: "+919876543211",
+          normalized_phone: "+919876543211",
         }),
         contact({ id: "raw", phone_number: "???", normalized_phone: null }),
       ],
       index
     );
     expect(out.callable.map((c) => c.contact.id)).toEqual(["ok"]);
-    expect(out.callable[0].normalized).toBe("+91222");
+    expect(out.callable[0].normalized).toBe("+919876543212");
     expect(out.dnc.map((c) => c.id).sort()).toEqual(["flag", "listed"]);
     expect(out.skipped.map((c) => c.id)).toEqual(["raw"]);
   });

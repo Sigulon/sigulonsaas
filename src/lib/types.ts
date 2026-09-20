@@ -1,6 +1,10 @@
 export type UserRole = "owner" | "admin" | "member" | "viewer";
 
+/** @deprecated Alias for the stored default — use OPENROUTER_DEFAULT_MODEL at runtime. */
 export const OPENROUTER_GEMINI_25_FLASH = "google/gemini-2.5-flash";
+/** Effective runtime LLM model. Override with the OPENROUTER_MODEL env var. */
+export const OPENROUTER_DEFAULT_MODEL =
+  process.env.OPENROUTER_MODEL?.trim() || "google/gemini-2.5-flash";
 export const CARTESIA_STT_PROVIDER = "cartesia";
 export const CARTESIA_TTS_PROVIDER = "cartesia";
 /** Sonic 3 supports the Indian languages exposed by Sigulon, including Telugu. */
@@ -39,7 +43,7 @@ export interface VoiceAgent {
   introduction: string;
   status: AgentStatus;
   llm_provider?: "openrouter";
-  llm_model?: "google/gemini-2.5-flash";
+  llm_model?: string;
   enabled_tools?: string[];
   stt_provider?: "cartesia";
   settings?: Record<string, unknown>;

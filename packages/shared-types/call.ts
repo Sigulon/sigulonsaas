@@ -10,7 +10,20 @@ export type CallStatus =
   | "busy"
   | "no_answer"
   | "cancelled"
-  | "voicemail";
+  | "voicemail"
+  // UPPERCASE DB spellings (CallState in packages/database/src/models/Call.ts).
+  // Canonical transport stays lowercase; accept these when reading DB rows.
+  | "CREATED"
+  | "QUEUED"
+  | "DIALING"
+  | "RINGING"
+  | "ANSWERED"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "FAILED"
+  | "BUSY"
+  | "NO_ANSWER"
+  | "CANCELLED";
 
 export type CallDirection = "inbound" | "outbound";
 

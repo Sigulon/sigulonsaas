@@ -39,6 +39,7 @@ export default function AgentDetailPage({
   const [status, setStatus] = useState<"active" | "paused">("active");
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [isTestCallOpen, setIsTestCallOpen] = useState(false);
   const [isWebTesterOpen, setIsWebTesterOpen] = useState(false);
 
@@ -78,6 +79,7 @@ export default function AgentDetailPage({
     e.preventDefault();
     setSaving(true);
     setSavedSuccess(false);
+    setSaveError(null);
 
     try {
       const res = await fetch(`/api/agents/${id}`, {
@@ -95,9 +97,13 @@ export default function AgentDetailPage({
       if (res.ok) {
         setSavedSuccess(true);
         setTimeout(() => setSavedSuccess(false), 3000);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setSaveError((data as { error?: string }).error || `Save failed (${res.status}). Please retry.`);
       }
     } catch (e) {
       console.error(e);
+      setSaveError("Save failed. Please check your connection and retry.");
     } finally {
       setSaving(false);
     }
@@ -302,6 +308,9 @@ export default function AgentDetailPage({
                     )}
                     <span>{savedSuccess ? "Saved Successfully!" : "Save Changes"}</span>
                   </Button>
+                  {saveError && (
+                    <p className="mt-2 text-xs text-red-600 dark:text-red-400">{saveError}</p>
+                  )}
                 </div>
               </CardContent>
             </Card>

@@ -99,6 +99,12 @@ _handler.setFormatter(JsonFormatter())
 logging.basicConfig(level=logging.INFO, handlers=[_handler])
 log = logging.getLogger("voice-runtime")
 
+# In-process single-flight for live media sockets, keyed by call_id. A stream
+# token stays valid for its whole TTL window, so without this a replayed token
+# opens a second concurrent pipeline for the same call (double provider spend,
+# double slot count, single bill record).
+_active_sockets: set[str] = set()
+
 # ---------------------------------------------------------------------------
 # App lifecycle
 # ---------------------------------------------------------------------------
@@ -277,12 +283,22 @@ async def voice_websocket(
     call_id: str,
     token: Optional[str] = Query(default=None),
 ) -> None:
+    # Accept first so a rejection delivers a clean close frame (Starlette
+    # raises if close() is called before accept()).
+    await websocket.accept()
     if not verify_runtime_stream_token(call_id, token):
         log.warning("Rejecting unauthenticated media socket for call %s", call_id)
         await websocket.close(code=1008, reason="invalid media stream token")
         return
+    # Single-flight per call_id: a token is valid for its whole TTL window,
+    # so without this a second concurrent socket replays it into a second
+    # billable pipeline (and double-counts the concurrency slot).
+    if call_id in _active_sockets:
+        log.warning("Rejecting duplicate media socket for call %s", call_id)
+        await websocket.close(code=1008, reason="duplicate media socket")
+        return
+    _active_sockets.add(call_id)
     websocket_started = time.perf_counter()
-    await websocket.accept()
     log.info(
         "[voice-latency] callId=%s stage=websocket_connected durationMs=%d",
         call_id,
@@ -331,7 +347,7 @@ async def voice_websocket(
         # -- 2. Per-tenant concurrency gate --------------------------------
         try:
             admitted, count = await acquire_concurrency_slot(
-                config.tenant_id, config.max_concurrent_calls
+                config.tenant_id, config.max_concurrent_calls, call_id
             )
         except ConcurrencyStateUnavailable as exc:
             outcome = "rejected_concurrency_state_unavailable"
@@ -375,30 +391,59 @@ async def voice_websocket(
         hb_task = asyncio.create_task(_heartbeat_loop(call_id))
 
         # -- 2c. Billing hold (idempotent; outbound-answer also reserves) ----
-        # Best-effort: audio never waits on billing, and settle reconciles.
-        # Reservation is already idempotent per call and settlement reconciles
-        # a missed best-effort ping. Do it concurrently so a control-plane
-        # timeout can never delay the caller's first greeting/audio frame.
+        # Non-blocking for audio, but RECORDED: a failed hold is tagged on the
+        # session and in finalize metadata so broke-org spend is visible, and
+        # REQUIRE_CREDIT_HOLD=true makes it a hard gate (close 1013) instead
+        # of postpaid grace. Settlement still reconciles a missed ping.
         credit_started = time.perf_counter()
         credit_task = asyncio.create_task(
             notify_credits_reserve(call_id, timeout_seconds=1.0)
         )
+        billing_hold_ok: Optional[bool] = None
 
         def _credit_reservation_done(task: asyncio.Task[bool]) -> None:
+            nonlocal billing_hold_ok
             try:
                 reserved = task.result()
-                log.info(
-                    "[voice-latency] callId=%s stage=credit_reservation durationMs=%d reserved=%s",
-                    call_id,
-                    round((time.perf_counter() - credit_started) * 1000),
-                    reserved,
-                )
+                billing_hold_ok = bool(reserved)
+                if reserved:
+                    log.info(
+                        "[voice-latency] callId=%s stage=credit_reservation durationMs=%d reserved=%s",
+                        call_id,
+                        round((time.perf_counter() - credit_started) * 1000),
+                        reserved,
+                    )
+                else:
+                    log.warning(
+                        "callId=%s billing hold NOT confirmed (insufficient/down/unconfigured) — call proceeds under postpaid-grace policy",
+                        call_id,
+                    )
+                    inc("calls_billing_hold_failed_total")
             except asyncio.CancelledError:
+                billing_hold_ok = False
                 log.warning("Credit reservation cancelled for call %s", call_id)
             except Exception as exc:  # noqa: BLE001 - notify is defensive itself
+                billing_hold_ok = False
                 log.warning("Credit reservation task failed for call %s: %s", call_id, exc)
 
         credit_task.add_done_callback(_credit_reservation_done)
+
+        # -- 2d. Optional hard gate: when REQUIRE_CREDIT_HOLD=true, wait for
+        # the hold (bounded 1.2s) instead of proceeding on grace. Default
+        # false preserves postpaid-grace; settle reconciles either way.
+        if os.getenv("REQUIRE_CREDIT_HOLD", "false").lower() == "true":
+            try:
+                await asyncio.wait_for(asyncio.shield(credit_task), timeout=1.2)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                billing_hold_ok = False
+            except Exception:  # noqa: BLE001 - callback already logged
+                pass
+            if not billing_hold_ok:
+                outcome = "rejected_no_credit_hold"
+                inc("calls_rejected_no_hold_total")
+                log.warning("Rejecting call %s: no credit hold (REQUIRE_CREDIT_HOLD)", call_id)
+                await websocket.close(code=1013, reason="no credit hold")
+                return
 
         # -- 3. Build the pipeline ------------------------------------------
         try:
@@ -543,6 +588,7 @@ async def voice_websocket(
         except Exception as exc:  # noqa: BLE001 - logging must not raise
             log.warning("log_call_outcome failed for call %s: %s", call_id, exc)
         finally:
+            _active_sockets.discard(call_id)
             clear_call_context()
 
 

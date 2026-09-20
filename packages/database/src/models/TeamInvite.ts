@@ -65,6 +65,13 @@ TeamInviteSchema.index(
   { organizationId: 1, email: 1, status: 1 }
 );
 
+// One pending invite per org+email: a re-invite upserts instead of stacking
+// duplicate pending rows.
+TeamInviteSchema.index(
+  { organizationId: 1, email: 1 },
+  { unique: true, partialFilterExpression: { status: "pending" } }
+);
+
 export const TeamInviteModel: Model<ITeamInvite> =
   mongoose.models.TeamInvite ||
   mongoose.model<ITeamInvite>("TeamInvite", TeamInviteSchema);

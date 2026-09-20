@@ -149,7 +149,7 @@ try {
   if (-not $SkipBuild) {
     Invoke-Gcloud @("builds", "submit", $repoRoot, "--tag=$webImage", "--project=$ProjectId")
     Invoke-Gcloud @("builds", "submit", (Join-Path $repoRoot "voice-runtime"), "--tag=$runtimeImage", "--project=$ProjectId")
-    Invoke-Gcloud @("builds", "submit", (Join-Path $repoRoot "services\campaign-worker"), "--tag=$workerImage", "--project=$ProjectId")
+    Invoke-Gcloud @("builds", "submit", (Join-Path $repoRoot "services/campaign-worker"), "--tag=$workerImage", "--project=$ProjectId")
   }
 
   # Deploy the web service once to obtain its HTTPS URL. It is immediately

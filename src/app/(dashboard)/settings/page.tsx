@@ -220,7 +220,7 @@ function AccountDetails() {
           </div>
 
           <dl className="mt-6 space-y-4 text-sm">
-            <Detail label="Signed-in user" value={session?.user?.email ?? "Demo workspace user"} loading={loading} />
+            <Detail label="Signed-in user" value={session?.user?.email ?? (loading ? undefined : "Not signed in — please log in")} loading={loading} />
             <Detail label="Access management" value="Manage members in Team & access" loading={false} />
             <Detail label="Credit management" value="Manage credits in Billing & credits" loading={false} />
           </dl>

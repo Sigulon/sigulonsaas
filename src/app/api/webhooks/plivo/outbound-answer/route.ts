@@ -10,7 +10,7 @@ import { reserveCallCredits } from "@/lib/credits";
 import { toCanonicalAgentConfig } from "@/lib/agent-config";
 import {
   CARTESIA_STT_PROVIDER,
-  OPENROUTER_GEMINI_25_FLASH,
+  OPENROUTER_DEFAULT_MODEL,
   type VoiceAgent,
 } from "@/lib/types";
 import { prewarmCallConfig } from "@/lib/redis";
@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
             introduction: intro,
             status: agent.status,
             llm_provider: llmProvider,
-            llm_model: OPENROUTER_GEMINI_25_FLASH,
+            llm_model: OPENROUTER_DEFAULT_MODEL,
             stt_provider: CARTESIA_STT_PROVIDER,
             enabled_tools: agent.config.tools.enabledTools,
             settings: agent.config.settings,

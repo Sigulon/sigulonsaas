@@ -30,6 +30,8 @@ jobs:
       - working-directory: voice-runtime
         run: uv sync --frozen
       - working-directory: voice-runtime
+        run: uvx ruff check . || echo "ruff not yet enforced (TODO: make blocking)"
+      - working-directory: voice-runtime
         run: uv run python -m unittest discover -s tests
 
   worker:
@@ -42,7 +44,18 @@ jobs:
       - working-directory: services/campaign-worker
         run: uv sync --frozen
       - working-directory: services/campaign-worker
+        run: uvx ruff check . || echo "ruff not yet enforced (TODO: make blocking)"
+      - working-directory: services/campaign-worker
         run: uv run python -m unittest discover -s tests
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
 
   build:
     runs-on: ubuntu-latest

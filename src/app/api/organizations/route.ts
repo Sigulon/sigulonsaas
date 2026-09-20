@@ -10,7 +10,7 @@ import {
   CARTESIA_STT_PROVIDER,
   CARTESIA_TTS_MODEL,
   CARTESIA_TTS_PROVIDER,
-  OPENROUTER_GEMINI_25_FLASH,
+  OPENROUTER_DEFAULT_MODEL,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
         },
         intelligence: {
           provider: "openrouter",
-          model: OPENROUTER_GEMINI_25_FLASH,
+          model: OPENROUTER_DEFAULT_MODEL,
           temperature: 0.7,
         },
         speech: {

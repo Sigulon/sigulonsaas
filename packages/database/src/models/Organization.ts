@@ -7,6 +7,11 @@ export interface IOrganization extends Document {
   maxConcurrentCalls: number;
   timezone: string;
   settings: Record<string, unknown>;
+  complianceSettings?: {
+    enforceDnc?: boolean;
+    recordCalls?: boolean;
+    restrictedHours?: { start?: string; end?: string; timezone?: string };
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +40,10 @@ const OrganizationSchema = new Schema<IOrganization>(
       default: "Asia/Kolkata",
     },
     settings: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
+    complianceSettings: {
       type: Schema.Types.Mixed,
       default: {},
     },

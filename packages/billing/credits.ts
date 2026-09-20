@@ -61,7 +61,9 @@ interface RpcStateRow {
 function toState(row: RpcStateRow) {
   const balance = num(row.balance_credits);
   const reserved = num(row.reserved_credits);
-  return { balance, reserved, available: round2(balance - reserved) };
+  // The ledger stores `balance` after active holds are already deducted, so
+  // availability is the balance itself — not balance minus reserved again.
+  return { balance, reserved, available: round2(balance) };
 }
 
 export type CreditState = ReturnType<typeof toState>;
@@ -124,7 +126,7 @@ export async function releaseCallCredits(
     p_org_id: orgId,
     p_call_id: callId,
     p_actual_amount: 0,
-    p_idempotency_key: refundKey(callId),
+    p_idempotency_key: settleKey(callId),
   });
   if (error) throw new Error(error.message);
   const row = (Array.isArray(data) ? data[0] : data) as RpcStateRow;

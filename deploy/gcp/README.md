@@ -93,6 +93,12 @@ whenever you rotate a value. `KEDA_REDIS_ADDRESS` is only `host:port`; it must
 not include `redis://`. If your Redis deployment does not use a password, set
 the `KEDA_REDIS_PASSWORD` value to an empty string.
 
+> Legacy manifests `deploy/cloudrun-*.yaml.legacy` are superseded and must not
+> be applied. The canonical manifests are `deploy/gcp/cloudrun-*.yaml` (Cloud
+> Run web + voice plane) and `deploy/gcp/worker/` (GKE + KEDA worker). The
+> worker must never be deployed as a Cloud Run Service: it is a non-HTTP,
+> long-running `BRPOP` consumer.
+
 ## Deploy
 
 Pass the secure worker Secret file to the deployment script. It will create

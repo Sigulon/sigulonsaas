@@ -224,9 +224,13 @@ def _mongo_database() -> Any:
 
 
 def _terminal_status_for(outcome: str) -> str:
-    """Map a runtime outcome string onto the ``calls.status`` check set."""
+    """Map a runtime outcome string onto the ``calls.status`` check set.
+
+    Unknown or empty outcomes are failures, never silent successes: the
+    caller must explicitly report completion.
+    """
     outcome = (outcome or "").lower()
-    if outcome in ("completed", "timeout"):
+    if outcome in ("completed", "success", "timeout"):
         return "completed"
     if "busy" in outcome:
         return "busy"
@@ -234,14 +238,13 @@ def _terminal_status_for(outcome: str) -> str:
         return "no_answer"
     if "cancel" in outcome:
         return "cancelled"
-    if outcome.startswith("rejected") or outcome.startswith("setup_failed"):
-        return "failed"
-    if outcome.startswith("error"):
-        return "failed"
-    return "completed"
+    # Everything else — errors, rejections, setup failures, empty or novel
+    # strings — is a failure so success metrics and usage rating stay honest.
+    return "failed"
 
 
 _local_finalized_calls: set[str] = set()
+_LOCAL_FINALIZED_CAP = 10000
 
 
 async def finalize_call(
@@ -269,14 +272,12 @@ async def finalize_call(
     5. Delete the Redis session record.
 
     Safe to call from the WebSocket ``finally``, the status-callback, and
-    the internal finalize endpoint concurrently.
+    the internal finalize endpoint concurrently. Returns False when the
+    durable writes fail so callers can retry instead of believing success.
     """
-    if call_id in _local_finalized_calls:
-        log.info("finalize already ran for call %s; skipping", call_id)
-        return False
-    _local_finalized_calls.add(call_id)
-
-    # -- 1. idempotency gate ------------------------------------------------
+    # -- 1. idempotency gate (Redis NX first; the local set is only a
+    # fast-path AFTER a successful claim, so a DB failure below stays
+    # retryable on this pod) -------------------------------------------
     claimed = True
     try:
         redis_client = _redis()
@@ -292,6 +293,9 @@ async def finalize_call(
     if not claimed:
         log.info("finalize already ran for call %s; skipping", call_id)
         return False
+    if call_id in _local_finalized_calls:
+        log.info("finalize already ran for call %s; skipping", call_id)
+        return False
 
     # -- session context (tenant for the slot release) ----------------------
     session = await get_session(call_id)
@@ -302,16 +306,19 @@ async def finalize_call(
         call_id, org_id, agent, outcome, duration_seconds,
     )
 
-    # -- 2. concurrency slot -------------------------------------------------
+    # -- 2. concurrency slot (exactly once per acquire) ---------------------
     if org_id:
         try:
             from config import release_concurrency_slot
 
-            await release_concurrency_slot(org_id)
+            await release_concurrency_slot(org_id, call_id)
         except Exception as exc:  # noqa: BLE001
             log.warning("slot release failed for call %s: %s", call_id, exc)
 
-    # -- 3+4. durable MongoDB writes (bounded retry, then give up loudly) ---
+    # -- 3+4. durable MongoDB writes: failures are LOUD and return False so
+    # callers (status-callback, internal endpoint) can retry instead of
+    # believing the call settled -----------------------------------------
+    writes_ok = False
     try:
         from providers.errors import with_provider_retry
 
@@ -319,90 +326,97 @@ async def finalize_call(
             client = _mongo_database()
             status = _terminal_status_for(outcome)
             ended_at = _utcnow_iso()
-            try:
-                from bson import ObjectId
-                filter_q = {"_id": ObjectId(call_id)} if ObjectId.is_valid(call_id) else {"_id": call_id}
-                call_doc = client.calls.find_one(filter_q)
-                if not call_doc:
-                    filter_q = {"providerCallId": call_id}
-                    call_doc = client.calls.find_one(filter_q)
+            from bson import ObjectId
+            filter_q = {"_id": ObjectId(call_id)} if ObjectId.is_valid(call_id) else {"_id": call_id}
+            call_doc = client.calls.find_one(filter_q)
+            if not call_doc:
+                call_doc = client.calls.find_one({"providerCallId": call_id})
+            if not call_doc:
+                raise RuntimeError(f"call row not found for {call_id}")
+            # Pin every subsequent write to the ACTUAL document id — the
+            # guessed _id form above may differ in type (ObjectId vs str)
+            # from what Mongo stored, which previously made updates match
+            # zero documents while reporting success.
+            filter_q = {"_id": call_doc["_id"]}
 
-                from datetime import datetime, timezone
-                now_dt = datetime.now(timezone.utc)
-                mongo_patch = {
-                    "status": status.upper(),
-                    "durationSeconds": max(0, int(duration_seconds)),
-                    "outcome": (disposition or outcome)[:200],
-                    "endedAt": now_dt,
+            from datetime import datetime, timezone
+            now_dt = datetime.now(timezone.utc)
+            mongo_patch = {
+                "status": status.upper(),
+                "durationSeconds": max(0, int(duration_seconds)),
+                "outcome": (disposition or outcome)[:200],
+                "endedAt": now_dt,
+                "updatedAt": now_dt,
+            }
+            if summary:
+                mongo_patch["summary"] = summary[:2000]
+            if recording_data:
+                mongo_patch["recording"] = recording_data
+                if recording_data.get("url"):
+                    mongo_patch["metadata.recordingUrl"] = recording_data["url"]
+            # Plivo's signed status webhook is authoritative for terminal
+            # provider outcomes and billable duration. A WebSocket close
+            # racing that webhook must not turn BUSY/FAILED/NO_ANSWER
+            # back into COMPLETED.
+            client.calls.update_one(
+                {
+                    **filter_q,
+                    "status": {
+                        "$nin": [
+                            "COMPLETED",
+                            "FAILED",
+                            "BUSY",
+                            "NO_ANSWER",
+                            "CANCELLED",
+                        ]
+                    },
+                },
+                {"$set": mongo_patch},
+            )
+
+            if recording_data and call_doc and recording_data.get("status") in ("completed", "ready"):
+                rec_doc = {
+                    "callId": call_doc["_id"],
+                    "organizationId": call_doc["organizationId"],
+                    "storageProvider": recording_data.get("storageProvider", "gcs"),
+                    "bucket": recording_data.get("bucket", ""),
+                    "objectKey": recording_data.get("objectPath", ""),
+                    "durationSeconds": int(recording_data.get("durationSeconds", duration_seconds)),
+                    "format": "audio/wav",
+                    "sizeBytes": int(recording_data.get("sizeBytes", 0)),
+                    "status": "ready",
                     "updatedAt": now_dt,
                 }
-                if summary:
-                    mongo_patch["summary"] = summary[:2000]
-                if recording_data:
-                    mongo_patch["recording"] = recording_data
-                    if recording_data.get("url"):
-                        mongo_patch["metadata.recordingUrl"] = recording_data["url"]
-                # Plivo's signed status webhook is authoritative for terminal
-                # provider outcomes and billable duration. A WebSocket close
-                # racing that webhook must not turn BUSY/FAILED/NO_ANSWER
-                # back into COMPLETED.
-                client.calls.update_one(
-                    {
-                        **filter_q,
-                        "status": {
-                            "$nin": [
-                                "COMPLETED",
-                                "FAILED",
-                                "BUSY",
-                                "NO_ANSWER",
-                                "CANCELLED",
-                            ]
-                        },
-                    },
-                    {"$set": mongo_patch},
+                rec_res = client.recordings.update_one(
+                    {"callId": call_doc["_id"]},
+                    {"$set": rec_doc, "$setOnInsert": {"createdAt": now_dt}},
+                    upsert=True,
                 )
+                rec_id = rec_res.upserted_id
+                if not rec_id:
+                    existing_rec = client.recordings.find_one({"callId": call_doc["_id"]})
+                    if existing_rec:
+                        rec_id = existing_rec["_id"]
+                if rec_id:
+                    client.calls.update_one(filter_q, {"$set": {"recordingId": rec_id}})
 
-                if recording_data and call_doc and recording_data.get("status") in ("completed", "ready"):
-                    rec_doc = {
-                        "callId": call_doc["_id"],
-                        "organizationId": call_doc["organizationId"],
-                        "storageProvider": recording_data.get("storageProvider", "gcs"),
-                        "bucket": recording_data.get("bucket", ""),
-                        "objectKey": recording_data.get("objectPath", ""),
-                        "durationSeconds": int(recording_data.get("durationSeconds", duration_seconds)),
-                        "format": "audio/wav",
-                        "sizeBytes": int(recording_data.get("sizeBytes", 0)),
-                        "status": "ready",
-                        "updatedAt": now_dt,
-                    }
-                    rec_res = client.recordings.update_one(
-                        {"callId": call_doc["_id"]},
-                        {"$set": rec_doc, "$setOnInsert": {"createdAt": now_dt}},
-                        upsert=True,
-                    )
-                    rec_id = rec_res.upserted_id
-                    if not rec_id:
-                        existing_rec = client.recordings.find_one({"callId": call_doc["_id"]})
-                        if existing_rec:
-                            rec_id = existing_rec["_id"]
-                    if rec_id:
-                        client.calls.update_one(filter_q, {"$set": {"recordingId": rec_id}})
-
-                if transcript and call_doc:
-                    segments = [
-                        {"speaker": t.get("role", "user"), "text": t.get("content") or t.get("text", ""), "timestampMs": 0}
-                        for t in transcript
-                    ]
-                    client.transcripts.update_one(
-                        {"callId": call_doc["_id"]},
-                        {"$set": {"organizationId": call_doc["organizationId"], "segments": segments, "updatedAt": now_dt}},
-                        upsert=True,
-                    )
-                if org_id and call_doc:
+            if transcript and call_doc:
+                segments = [
+                    {"speaker": t.get("role", "user"), "text": t.get("content") or t.get("text", ""), "timestampMs": 0}
+                    for t in transcript
+                ]
+                client.transcripts.update_one(
+                    {"callId": call_doc["_id"]},
+                    {"$set": {"organizationId": call_doc["organizationId"], "segments": segments, "updatedAt": now_dt}},
+                    upsert=True,
+                )
+            if org_id and call_doc:
+                try:
                     client.call_events.insert_one({
                         "organizationId": call_doc["organizationId"],
                         "callId": call_doc["_id"],
                         "type": "finalized",
+                        "provider_event_id": f"finalized:{call_id}",
                         "idempotencyKey": f"finalized:{call_id}",
                         "data": {
                             "outcome": disposition or outcome,
@@ -414,8 +428,11 @@ async def finalize_call(
                         },
                         "timestamp": now_dt,
                     })
-            except Exception as exc:  # noqa: BLE001
-                log.warning("MongoDB finalize writes failed for %s: %s", call_id, exc)
+                except Exception as exc:  # noqa: BLE001 - duplicate redelivery
+                    if "duplicate" in str(exc).lower() or "11000" in str(exc):
+                        log.info("finalized event already recorded for call %s", call_id)
+                    else:
+                        raise
 
         import asyncio as _asyncio
 
@@ -425,12 +442,19 @@ async def finalize_call(
             max_attempts=3,
             operation="finalize_call.db_writes",
         )
-    except Exception as exc:  # noqa: BLE001 - durability degraded, call still ends
+        writes_ok = True
+    except Exception as exc:  # noqa: BLE001 - durability degraded, report failure
         log.error("durable finalize writes failed for call %s: %s", call_id, exc)
+        return False
+
+    # Mark locally finalized ONLY after durable success (bounded set).
+    _local_finalized_calls.add(call_id)
+    if len(_local_finalized_calls) > _LOCAL_FINALIZED_CAP:
+        _local_finalized_calls.clear()
 
     # -- 5. session hygiene ----------------------------------------------------
     await delete_session(call_id)
-    return True
+    return writes_ok
 
 
 __all__ = [

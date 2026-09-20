@@ -66,6 +66,8 @@ const RecordingSchema = new Schema<IRecording>(
   }
 );
 
+RecordingSchema.index({ callId: 1 }, { unique: true });
+
 export const RecordingModel: Model<IRecording> =
   mongoose.models.Recording ||
   mongoose.model<IRecording>("Recording", RecordingSchema);

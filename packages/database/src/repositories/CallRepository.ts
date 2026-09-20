@@ -65,10 +65,13 @@ export class CallRepository {
   }
 
   static async findByProviderCallId(
-    providerCallId: string
+    providerCallId: string,
+    orgId?: string | mongoose.Types.ObjectId
   ): Promise<ICall | null> {
     await connectToDatabase();
-    return CallModel.findOne({ providerCallId }).exec();
+    const query: Record<string, unknown> = { providerCallId };
+    if (orgId) query.organizationId = orgId;
+    return CallModel.findOne(query).exec();
   }
 
   static async findByIdempotencyKey(
@@ -97,10 +100,13 @@ export class CallRepository {
   }
 
   static async findForLiveConversationByProviderCallId(
-    providerCallId: string
+    providerCallId: string,
+    orgId?: string | mongoose.Types.ObjectId
   ): Promise<ICall | null> {
     await connectToDatabase();
-    return CallModel.findOne({ providerCallId })
+    const query: Record<string, unknown> = { providerCallId };
+    if (orgId) query.organizationId = orgId;
+    return CallModel.findOne(query)
       .select("_id organizationId agentId direction status createdAt answeredAt")
       .lean<ICall>()
       .exec();
@@ -169,23 +175,29 @@ export class CallRepository {
   ): Promise<ITranscript> {
     await connectToDatabase();
     const transcript = await TranscriptModel.findOneAndUpdate(
-      { callId },
-      { organizationId: orgId, segments },
-      { upsert: true, returnDocument: "after" }
+      { callId, organizationId: orgId },
+      { $set: { organizationId: orgId, segments } },
+      { upsert: true, returnDocument: "after", runValidators: true }
     ).exec();
 
-    await CallModel.findByIdAndUpdate(callId, {
-      transcriptId: transcript._id,
-    }).exec();
+    // Never re-tag another org's call row: the link write is scoped to this
+    // org's call so a cross-org callId cannot steal a transcript pointer.
+    await CallModel.findOneAndUpdate(
+      { _id: callId, organizationId: orgId },
+      { $set: { transcriptId: transcript._id } }
+    ).exec();
 
     return transcript;
   }
 
   static async getTranscript(
-    callId: string | mongoose.Types.ObjectId
+    callId: string | mongoose.Types.ObjectId,
+    orgId?: string | mongoose.Types.ObjectId
   ): Promise<ITranscript | null> {
     await connectToDatabase();
-    return TranscriptModel.findOne({ callId }).exec();
+    const query: Record<string, unknown> = { callId };
+    if (orgId) query.organizationId = orgId;
+    return TranscriptModel.findOne(query).exec();
   }
 
   static async saveOutcome(
@@ -204,17 +216,22 @@ export class CallRepository {
   ): Promise<ICallOutcome> {
     await connectToDatabase();
     const outcome = await CallOutcomeModel.findOneAndUpdate(
-      { callId },
+      { callId, organizationId: orgId },
       {
-        organizationId: orgId,
-        ...data,
+        $set: {
+          organizationId: orgId,
+          ...data,
+        },
       },
-      { upsert: true, returnDocument: "after" }
+      { upsert: true, returnDocument: "after", runValidators: true }
     ).exec();
 
-    await CallModel.findByIdAndUpdate(callId, {
-      outcome: data.disposition,
-    }).exec();
+    // Never re-tag another org's call row: the link write is scoped to this
+    // org's call so a cross-org callId cannot steal an outcome pointer.
+    await CallModel.findOneAndUpdate(
+      { _id: callId, organizationId: orgId },
+      { $set: { outcome: data.disposition } }
+    ).exec();
 
     return outcome;
   }
@@ -231,12 +248,21 @@ export class CallRepository {
     status?: "uploading" | "ready" | "failed";
   }): Promise<IRecording> {
     await connectToDatabase();
-    const recording = new RecordingModel(data);
-    await recording.save();
+    const recording = await RecordingModel.findOneAndUpdate(
+      { callId: data.callId, organizationId: data.organizationId },
+      { $set: data },
+      { upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true }
+    ).exec();
+    if (!recording) {
+      throw new Error("Failed to save recording");
+    }
 
-    await CallModel.findByIdAndUpdate(data.callId, {
-      recordingId: recording._id,
-    }).exec();
+    // Scope the link write by callId AND organizationId so a recording for
+    // one org can never re-tag another org's call row.
+    await CallModel.findOneAndUpdate(
+      { _id: data.callId, organizationId: data.organizationId },
+      { $set: { recordingId: recording._id } }
+    ).exec();
 
     return recording;
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
+import { canCreateAndRun } from "@/lib/roles";
 import { AgentRepository } from "@sigulon/database";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,13 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { orgId, userId } = await getOrgContext();
+    const { orgId, role, userId } = await getOrgContext();
+    if (!canCreateAndRun(role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
 
     let changeSummary = "Published via Agent Studio";
     try {
@@ -37,7 +44,8 @@ export async function POST(
   } catch (err: unknown) {
     console.error("[POST /api/agents/[id]/publish] Error:", err);
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
-    const status = (err as NodeJS.ErrnoException).code === "UNAUTHORIZED" ? 401 : 500;
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
     return NextResponse.json({ error: errorMsg }, { status });
   }
 }

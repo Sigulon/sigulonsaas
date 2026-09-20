@@ -309,7 +309,9 @@ export function AgentCreationWizard() {
       .then((data) => {
         if (isMounted) {
           setVoices(data.voices || []);
-          if (data.voices?.length > 0 && !data.voices.some((v: { id: string }) => v.id === selectedVoiceId)) {
+          // Default to the first voice only when nothing is selected yet —
+          // never clobber an explicit user pick when the list refreshes.
+          if (!selectedVoiceId && data.voices?.length > 0) {
             setSelectedVoiceId(data.voices[0].id);
           }
         }
@@ -322,7 +324,7 @@ export function AgentCreationWizard() {
     return () => {
       isMounted = false;
     };
-  }, [primaryLanguage, selectedVoiceId]);
+  }, [primaryLanguage]);
 
   // Voice playback
   const handlePlayPreview = (voiceId: string, previewUrl: string) => {
@@ -356,13 +358,16 @@ export function AgentCreationWizard() {
     setActions([...preset.actions]);
   };
 
-  // Add question field
+  // Add question field — keys must be unique and non-empty (a Hindi-only
+  // label or punctuation would otherwise slug to "" and collide).
   const handleAddField = () => {
     if (!newFieldLabel.trim()) return;
     const generatedKey = (newFieldKey || newFieldLabel)
       .toLowerCase()
       .replace(/[^a-z0-9_]+/g, "_")
       .replace(/^_+|_+$/g, "");
+    if (!generatedKey) return;
+    if (qualificationFields.some((f) => f.key === generatedKey)) return;
 
     const choicesArray =
       newFieldType === "choice" && newFieldChoices.trim()
@@ -391,10 +396,12 @@ export function AgentCreationWizard() {
     setQualificationFields((prev) => prev.filter((f) => f.key !== key));
   };
 
-  // Pre-call variables
+  // Pre-call variables — same uniqueness rule as qualification fields.
   const handleAddPreCall = () => {
     if (!newPreKey.trim()) return;
-    const cleanKey = newPreKey.toLowerCase().replace(/[^a-z0-9_]+/g, "_");
+    const cleanKey = newPreKey.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+    if (!cleanKey) return;
+    if (preCallVariables.some((v) => v.key === cleanKey)) return;
     setPreCallVariables((prev) => [
       ...prev,
       {
@@ -586,6 +593,9 @@ export function AgentCreationWizard() {
                 type="button"
                 onClick={() => {
                   if (s.step < currentStep || generatedBundle) {
+                    // Stepping back after Generate invalidates the bundle —
+                    // saving afterwards must not publish stale content.
+                    if (generatedBundle && s.step < 12) setGeneratedBundle(null);
                     setCurrentStep(s.step);
                   }
                 }}

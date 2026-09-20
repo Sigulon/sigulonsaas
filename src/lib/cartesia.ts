@@ -212,18 +212,6 @@ export class CartesiaClient {
       } catch {}
 
       if (response.status === 402 || parsedErr?.message?.includes("Agent limit reached")) {
-        console.warn("Cartesia agent limit reached. Updating existing agent instead of failing...");
-        try {
-          const existingAgents = await this.listAgents();
-          if (existingAgents.length > 0) {
-            const targetId = existingAgents[0].id;
-            await this.updateAgent(targetId, params);
-            return { agent_id: targetId };
-          }
-        } catch (updateErr) {
-          console.error("Failed to update existing agent fallback:", updateErr);
-        }
-
         throw new Error(
           parsedErr?.message || "Cartesia subscription agent limit reached. Please upgrade your Cartesia plan or manage your existing agent."
         );
@@ -345,7 +333,7 @@ export class CartesiaClient {
    * Verify HMAC-SHA256 signature for incoming webhooks
    */
   verifyWebhookSignature(rawBody: string, signatureHeader: string, webhookSecret: string): boolean {
-    if (!signatureHeader || !webhookSecret) return true;
+    if (!signatureHeader || !webhookSecret) return false;
 
     try {
       const hmac = crypto.createHmac("sha256", webhookSecret);

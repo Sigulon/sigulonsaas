@@ -58,7 +58,7 @@ export async function sendEmail(message: EmailMessage): Promise<"sent" | "develo
   const config = emailConfig();
   if (!config) {
     if (process.env.NODE_ENV !== "production") {
-      console.info(`[email] development delivery to ${message.to}: ${message.subject}\n${message.text}`);
+      console.info(`[email] development delivery to ${message.to}: ${message.subject}`);
       return "development";
     }
     throw new EmailDeliveryError("SMTP_HOST, SMTP_USER, SMTP_PASSWORD, and EMAIL_FROM are required.");
@@ -91,11 +91,12 @@ export async function sendTeamInviteEmail(input: {
   role: string;
 }): Promise<"sent" | "development"> {
   const url = invitationUrl(input.token);
+  const safeOrgForSubject = input.organizationName.replace(/[\r\n]+/g, " ");
   const organizationName = escapeHtml(input.organizationName);
   const role = escapeHtml(input.role);
   return sendEmail({
     to: input.to,
-    subject: `You've been invited to ${input.organizationName} on Sigulon`,
+    subject: `You've been invited to ${safeOrgForSubject} on Sigulon`,
     text: `You've been invited to join ${input.organizationName} as ${input.role}. Accept within seven days:\n${url}`,
     html: `<p>You've been invited to join <strong>${organizationName}</strong> as ${role}.</p><p><a href="${escapeHtml(url)}">Accept invitation</a></p><p>This link expires in seven days.</p>`,
   });

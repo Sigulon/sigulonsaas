@@ -24,6 +24,11 @@ export function canManageTeam(role: string): boolean {
   return roleRank(role) >= RANK.admin;
 }
 
+/** Create & run (agents, calls, campaigns, contacts) needs member+. Viewer is read-only. */
+export function canCreateAndRun(role: string): boolean {
+  return roleRank(role) >= RANK.member;
+}
+
 /** Destructive org settings (delete org, transfer ownership) need owner. */
 export function isOwner(role: string): boolean {
   return role === "owner";

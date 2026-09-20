@@ -464,7 +464,8 @@ export function BrowserCallPlayground({
     setIsProcessingTurn(false);
   };
 
-  const quickPromptsList = QUICK_PROMPTS[language] || QUICK_PROMPTS.hi;
+  const langKey = (language || "en").toLowerCase().split("-")[0];
+  const quickPromptsList = QUICK_PROMPTS[langKey] || QUICK_PROMPTS.en;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950 space-y-6">

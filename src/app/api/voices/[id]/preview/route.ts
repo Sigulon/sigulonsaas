@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
+import { canCreateAndRun } from "@/lib/roles";
 import { CartesiaClient } from "@/lib/cartesia";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,13 @@ export async function GET(
 ) {
   try {
     const { id: voiceId } = await params;
-    const { cartesiaApiKey } = await getOrgContext();
+    const { role, cartesiaApiKey } = await getOrgContext();
+    if (!canCreateAndRun(role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
     const { searchParams } = new URL(req.url);
     const language = searchParams.get("language") || "hi";
 
@@ -49,6 +56,8 @@ export async function GET(
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to synthesize voice preview";
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
+    return NextResponse.json({ error: errorMsg }, { status });
   }
 }

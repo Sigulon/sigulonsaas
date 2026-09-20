@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getOrgContext } from "@/lib/auth-helpers";
+import { canCreateAndRun } from "@/lib/roles";
 import {
   CallRepository,
   ContactRepository,
@@ -146,7 +147,8 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
-    const httpStatus = (err as NodeJS.ErrnoException).code === "UNAUTHORIZED" ? 401 : 500;
+    const code = (err as NodeJS.ErrnoException).code;
+    const httpStatus = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
     return NextResponse.json({ error: errorMsg }, { status: httpStatus });
   }
 }
@@ -154,7 +156,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const requestStartedAt = performance.now();
-    const { orgId } = await getOrgContext();
+    const context = await getOrgContext();
+    if (!canCreateAndRun(context.role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
+    const { orgId } = context;
     const body = await req.json();
     const idempotencyKey = req.headers.get("idempotency-key")?.trim() || "";
 
@@ -464,7 +473,8 @@ export async function POST(req: NextRequest) {
     );
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
-    const httpStatus = (err as NodeJS.ErrnoException).code === "UNAUTHORIZED" ? 401 : 500;
+    const code = (err as NodeJS.ErrnoException).code;
+    const httpStatus = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
     return NextResponse.json({ error: errorMsg }, { status: httpStatus });
   }
 }

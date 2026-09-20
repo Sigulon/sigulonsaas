@@ -17,8 +17,9 @@ export interface PromptBuilderInput {
  */
 export function buildSystemPrompt(input: PromptBuilderInput): string {
   const { businessDescription, language = "hi", goal } = input;
+  const normalizedLangCode = language.trim().toLowerCase().replace(/-in$/, "");
   const langObj =
-    INDIAN_LANGUAGES.find((l) => l.code === language) || INDIAN_LANGUAGES[0];
+    INDIAN_LANGUAGES.find((l) => l.code === normalizedLangCode) || INDIAN_LANGUAGES[0];
   const cleanDesc =
     businessDescription?.trim() ||
     "conversational customer assistance and consultation";

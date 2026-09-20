@@ -22,12 +22,14 @@ export class ProviderAccountRepository {
     return ProviderAccountModel.findOneAndUpdate(
       { organizationId: orgId, provider },
       {
-        credentialsEncrypted,
-        encryptionIv,
-        status,
-        updatedAt: new Date(),
+        $set: {
+          credentialsEncrypted,
+          encryptionIv,
+          status,
+          updatedAt: new Date(),
+        },
       },
-      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true, runValidators: true }
     ).exec() as Promise<IProviderAccount>;
   }
 

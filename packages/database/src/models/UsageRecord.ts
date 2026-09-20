@@ -69,6 +69,7 @@ const UsageRecordSchema = new Schema<IUsageRecord>(
 );
 
 UsageRecordSchema.index({ organizationId: 1, createdAt: -1 });
+UsageRecordSchema.index({ organizationId: 1, callId: 1 }, { unique: true });
 
 export const UsageRecordModel: Model<IUsageRecord> =
   mongoose.models.UsageRecord ||

@@ -416,7 +416,7 @@ class TestInternalAuth(unittest.TestCase):
 
 class TestAgentConfigRoundtrip(unittest.TestCase):
     def test_legacy_stack_normalizes_to_required_providers(self):
-        from config import AgentConfig
+        from config import AgentConfig, default_openrouter_model
 
         cfg = AgentConfig(
             call_id="c1", agent_id="a1", tenant_id="o1",
@@ -426,7 +426,7 @@ class TestAgentConfigRoundtrip(unittest.TestCase):
         )
         canon = cfg.to_canonical()
         self.assertEqual(canon["intelligence"]["provider"], "openrouter")
-        self.assertEqual(canon["intelligence"]["model"], "google/gemini-2.5-flash")
+        self.assertEqual(canon["intelligence"]["model"], default_openrouter_model())
         self.assertEqual(canon["speech"]["stt_provider"], "cartesia")
         self.assertEqual(canon["speech"]["tts_provider"], "cartesia")
         self.assertEqual(canon["speech"]["tts_model"], "sonic-3")

@@ -11,16 +11,24 @@ import Link from "next/link";
 export default function AgentsPage() {
   const [agents, setAgents] = useState<VoiceAgent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isWebTesterOpen, setIsWebTesterOpen] = useState(false);
 
   const fetchAgents = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const res = await fetch("/api/agents");
+      if (!res.ok) {
+        setLoadError(res.status === 401 ? "Session expired — please log in again." : "Failed to load agents. Please retry.");
+        setAgents([]);
+        return;
+      }
       const data = await res.json();
       setAgents(data.agents || []);
     } catch (e) {
       console.error("Failed to load agents from Cartesia", e);
+      setLoadError("Failed to load agents. Please retry.");
     } finally {
       setLoading(false);
     }
@@ -81,6 +89,15 @@ export default function AgentsPage() {
         <div className="py-20 flex flex-col items-center justify-center text-slate-400">
           <Loader2 className="h-8 w-8 animate-spin text-indigo-600 mb-2" />
           <span className="text-sm">Fetching your voice agents...</span>
+        </div>
+      ) : loadError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30 p-12 text-center">
+          <h3 className="mt-3 text-base font-semibold text-red-700 dark:text-red-300">
+            Couldn&apos;t load agents
+          </h3>
+          <p className="mt-1 text-xs text-red-600 dark:text-red-400 max-w-sm mx-auto">
+            {loadError}
+          </p>
         </div>
       ) : agents.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 p-12 text-center">

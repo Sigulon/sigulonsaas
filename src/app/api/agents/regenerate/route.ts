@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
+import { canCreateAndRun } from "@/lib/roles";
 import { regenerateAgentBundle } from "@/lib/agent-bundle-generator";
 import { repairAgentBundle, validateAgentBundle } from "@sigulon/agent-schema/validation";
 
@@ -11,7 +12,13 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: NextRequest) {
   try {
-    await getOrgContext();
+    const { role } = await getOrgContext();
+    if (!canCreateAndRun(role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
     const body = await req.json();
     const candidate = body.agent || body.bundle;
     if (!candidate || typeof candidate !== "object") {
@@ -28,7 +35,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, agent: result.bundle, bundle: result.bundle, generatedBy: result.generatedBy });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
-    const status = (err as NodeJS.ErrnoException).code === "UNAUTHORIZED" ? 401 : 500;
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
     return NextResponse.json({ error: errorMsg }, { status });
   }
 }

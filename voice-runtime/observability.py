@@ -169,7 +169,13 @@ async def check_readiness() -> dict[str, Any]:
     plivo_ok = bool(os.getenv("PLIVO_AUTH_ID")) and bool(os.getenv("PLIVO_AUTH_TOKEN"))
     checks["cartesia_stt"] = {"ok": cartesia_ok}
     checks["cartesia_tts"] = {"ok": cartesia_ok}
-    checks["openrouter"] = {"ok": openrouter_ok, "model": "google/gemini-2.5-flash"}
+    checks["openrouter"] = {
+        "ok": openrouter_ok,
+        "model": (
+            os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+            or "google/gemini-2.5-flash"
+        ).strip() or "google/gemini-2.5-flash",
+    }
     checks["plivo"] = {"ok": plivo_ok}
     for name, is_ok, required in (
         ("cartesia_stt", cartesia_ok, "CARTESIA_API_KEY"),

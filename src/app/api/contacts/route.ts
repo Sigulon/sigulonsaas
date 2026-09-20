@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
+import { canCreateAndRun } from "@/lib/roles";
 import { ContactRepository, DncRepository } from "@sigulon/database";
 import { normalizePhone } from "@/lib/phone";
 
@@ -45,13 +46,22 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
+    return NextResponse.json({ error: errorMsg }, { status });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { orgId } = await getOrgContext();
+    const context = await getOrgContext();
+    if (!canCreateAndRun(context.role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
+    const { orgId } = context;
     const body = await req.json();
 
     const { name, phone_number, email = "", company = "", do_not_call = false, metadata = {} } = body;
@@ -103,13 +113,22 @@ export async function POST(req: NextRequest) {
     );
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
+    return NextResponse.json({ error: errorMsg }, { status });
   }
 }
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { orgId } = await getOrgContext();
+    const context = await getOrgContext();
+    if (!canCreateAndRun(context.role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
+    const { orgId } = context;
     const body = await req.json();
     const { id, do_not_call } = body;
 
@@ -139,6 +158,8 @@ export async function PATCH(req: NextRequest) {
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
+    return NextResponse.json({ error: errorMsg }, { status });
   }
 }

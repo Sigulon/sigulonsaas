@@ -17,15 +17,29 @@ interface CallsChartProps {
 }
 
 export function CallsChart({ data = [] }: CallsChartProps) {
-  const chartData = data.length > 0 ? data : [
-    { date: "Mon", calls: 12, answered: 9 },
-    { date: "Tue", calls: 19, answered: 14 },
-    { date: "Wed", calls: 24, answered: 20 },
-    { date: "Thu", calls: 35, answered: 28 },
-    { date: "Fri", calls: 42, answered: 34 },
-    { date: "Sat", calls: 15, answered: 11 },
-    { date: "Sun", calls: 8, answered: 6 },
-  ];
+  if (data.length === 0) {
+    return (
+      <Card className="border-slate-200/80 dark:border-slate-800 shadow-xs">
+        <CardHeader className="flex flex-row items-center justify-between pb-4">
+          <div>
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <PhoneCall className="h-4 w-4 text-indigo-600" />
+              Outbound Volume & Answered Calls
+            </CardTitle>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Telephony engagement metrics over the last 7 days
+            </p>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="h-64 w-full flex items-center justify-center text-sm text-slate-500">
+            No call activity yet — place or receive a call to see volume here.
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+  const chartData = data;
 
   return (
     <Card className="border-slate-200/80 dark:border-slate-800 shadow-xs">

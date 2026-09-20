@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
+import { canCreateAndRun } from "@/lib/roles";
 import { AgentRepository } from "@sigulon/database";
 import { CartesiaClient } from "@/lib/cartesia";
-import { OPENROUTER_GEMINI_25_FLASH } from "@/lib/types";
+import { OPENROUTER_DEFAULT_MODEL } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,13 @@ export async function POST(
 ) {
   try {
     const { id: agentId } = await params;
-    const { orgId, cartesiaApiKey } = await getOrgContext();
+    const { orgId, role, cartesiaApiKey } = await getOrgContext();
+    if (!canCreateAndRun(role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
     const body = await req.json();
 
     const {
@@ -99,7 +106,7 @@ export async function POST(
     let replyText = "";
 
     const openRouterKey = process.env.OPENROUTER_API_KEY;
-    const openRouterModel = OPENROUTER_GEMINI_25_FLASH;
+    const openRouterModel = OPENROUTER_DEFAULT_MODEL;
 
     // 3A. OpenRouter API (Primary - Gemini 2.5 Flash)
     if (openRouterKey && !replyText) {
@@ -341,6 +348,8 @@ export async function POST(
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Test session error";
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
+    return NextResponse.json({ error: errorMsg }, { status });
   }
 }

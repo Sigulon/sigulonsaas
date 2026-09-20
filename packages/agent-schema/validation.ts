@@ -36,7 +36,29 @@ export function validateAgentConfig(config: unknown): { valid: boolean; errors: 
     return { valid: false, errors: ["Config must be a non-null object"] };
   }
 
-  const c = config as Record<string, unknown>;
+  // Accept BOTH the canonical snake_case shape and the camelCase DB shape
+  // (Agent model stores _id/organizationId/systemPrompt/voiceId). Normalize
+  // to snake_case for validation so neither side's valid configs are rejected.
+  const raw = config as Record<string, unknown>;
+  const norm: Record<string, unknown> = { ...raw };
+  if (typeof raw._id !== "undefined" && typeof norm.id === "undefined") norm.id = String(raw._id);
+  if (typeof raw.organizationId !== "undefined" && typeof norm.organization_id === "undefined") {
+    norm.organization_id = String(raw.organizationId);
+  }
+  const normInstructions = { ...((norm.instructions ?? raw.instructions) as Record<string, unknown> | undefined ?? {}) } as Record<string, unknown>;
+  const rawInstructions = (raw.instructions ?? {}) as Record<string, unknown>;
+  if (typeof rawInstructions.systemPrompt !== "undefined" && typeof normInstructions.system_prompt === "undefined") {
+    normInstructions.system_prompt = rawInstructions.systemPrompt;
+  }
+  norm.instructions = normInstructions;
+  const normVoice = { ...((norm.voice ?? raw.voice) as Record<string, unknown> | undefined ?? {}) } as Record<string, unknown>;
+  const rawVoice = (raw.voice ?? {}) as Record<string, unknown>;
+  if (typeof rawVoice.voiceId !== "undefined" && typeof normVoice.voice_id === "undefined") {
+    normVoice.voice_id = rawVoice.voiceId;
+  }
+  norm.voice = normVoice;
+
+  const c = norm;
   if (!c.id || typeof c.id !== "string") errors.push("Missing or invalid 'id'");
   if (!c.organization_id || typeof c.organization_id !== "string") errors.push("Missing or invalid 'organization_id'");
 

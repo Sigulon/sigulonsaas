@@ -237,7 +237,7 @@ export default function PhoneNumbersPage() {
   }, []);
 
   const inboundWebhookUrl = `${originUrl}/api/webhooks/plivo/inbound`;
-  const fallbackWebhookUrl = `${originUrl}/api/webhooks/plivo/fallback`;
+  const fallbackWebhookUrl = `${originUrl}/api/webhooks/plivo/status`;
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto">

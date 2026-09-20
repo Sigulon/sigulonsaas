@@ -30,9 +30,15 @@ function DashboardContent() {
 
   const loadData = useCallback(async () => {
     try {
+      const statsParams = new URLSearchParams();
+      if (operationDirection !== "all") statsParams.set("direction", operationDirection);
+      if (operationPeriod !== "7d") statsParams.set("period", operationPeriod);
+      const statsQuery = statsParams.toString() ? `?${statsParams.toString()}` : "";
+      const callsParams = new URLSearchParams({ limit: "10" });
+      if (operationDirection !== "all") callsParams.set("direction", operationDirection);
       const [statsRes, callsRes] = await Promise.all([
-        fetch("/api/dashboard/stats"),
-        fetch("/api/calls?limit=10"),
+        fetch(`/api/dashboard/stats${statsQuery}`),
+        fetch(`/api/calls?${callsParams.toString()}`),
       ]);
 
       if (statsRes.ok) {
@@ -48,7 +54,7 @@ function DashboardContent() {
     } catch (e) {
       console.error("Failed to load dashboard data:", e);
     }
-  }, []);
+  }, [operationDirection, operationPeriod]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- benign mount-fetch idiom.

@@ -119,8 +119,10 @@ export class ContactRepository {
         },
         {
           $set: {
-            name: c.name || "",
             phone: c.phone,
+          },
+          $setOnInsert: {
+            name: c.name || "",
             email: c.email || "",
             company: c.company || "",
             customFields: c.customFields || {},
@@ -131,6 +133,7 @@ export class ContactRepository {
           upsert: true,
           returnDocument: "after",
           setDefaultsOnInsert: true,
+          runValidators: true,
         }
       ).exec();
       if (res) results.push(res);

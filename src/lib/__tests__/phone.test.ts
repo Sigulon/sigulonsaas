@@ -27,6 +27,13 @@ describe("normalizePhone", () => {
     expect(normalizePhone("12345")).toBeNull();
     expect(normalizePhone("abc")).toBeNull();
   });
+
+  it("rejects +-prefixed numbers outside 7..15 digits", () => {
+    expect(normalizePhone("+1")).toBeNull();
+    expect(normalizePhone("+123456")).toBeNull();
+    expect(normalizePhone("+1234567890123456")).toBeNull();
+    expect(normalizePhone("+919876543210")).toBe("+919876543210");
+  });
 });
 
 describe("digitsOf / lastDigits", () => {

@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getOrgContext } from "@/lib/auth-helpers";
+import { canCreateAndRun } from "@/lib/roles";
 import { INDIAN_LANGUAGES } from "@/lib/cartesia";
 import { buildSystemPrompt } from "@/lib/prompt-builder";
-import { OPENROUTER_GEMINI_25_FLASH } from "@/lib/types";
+import { OPENROUTER_DEFAULT_MODEL } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const { role } = await getOrgContext();
+    if (!canCreateAndRun(role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
     const body = await req.json();
     const { business_description, language = "hi", goal } = body;
 
@@ -24,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     // Use OpenRouter Gemini 2.5 Flash when available.
     const openRouterKey = process.env.OPENROUTER_API_KEY;
-    const openRouterModel = OPENROUTER_GEMINI_25_FLASH;
+    const openRouterModel = OPENROUTER_DEFAULT_MODEL;
 
     if (openRouterKey) {
       try {
@@ -87,6 +96,8 @@ Target language: ${langObj.name} (${language})`,
     return NextResponse.json({ structured_prompt: promptText });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to generate prompt";
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
+    return NextResponse.json({ error: errorMsg }, { status });
   }
 }

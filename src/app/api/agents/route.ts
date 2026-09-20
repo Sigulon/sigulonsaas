@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
+import { canCreateAndRun } from "@/lib/roles";
 import {
   AgentRepository,
   PhoneNumberRepository,
@@ -10,7 +11,7 @@ import {
   CARTESIA_STT_PROVIDER,
   CARTESIA_TTS_MODEL,
   CARTESIA_TTS_PROVIDER,
-  OPENROUTER_GEMINI_25_FLASH,
+  OPENROUTER_DEFAULT_MODEL,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +52,7 @@ export async function GET() {
         introduction: ag.config.instructions.greeting || "",
         status: ag.status,
         llm_provider: "openrouter",
-        llm_model: OPENROUTER_GEMINI_25_FLASH,
+        llm_model: OPENROUTER_DEFAULT_MODEL,
         stt_provider: CARTESIA_STT_PROVIDER,
         enabled_tools: ag.config.tools.enabledTools,
         phone_numbers: numbers,
@@ -71,14 +72,22 @@ export async function GET() {
     return NextResponse.json({ agents: formattedAgents });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
-    const status = (err as NodeJS.ErrnoException).code === "UNAUTHORIZED" ? 401 : 500;
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
     return NextResponse.json({ error: errorMsg }, { status });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { orgId } = await getOrgContext();
+    const context = await getOrgContext();
+    if (!canCreateAndRun(context.role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
+    const { orgId } = context;
     const body = await req.json();
 
     const {
@@ -94,7 +103,7 @@ export async function POST(req: NextRequest) {
       status: agentStatus = "active",
     } = body;
     const llmProvider = "openrouter";
-    const llmModel = OPENROUTER_GEMINI_25_FLASH;
+    const llmModel = OPENROUTER_DEFAULT_MODEL;
     const sttProvider = CARTESIA_STT_PROVIDER;
     const ttsProvider = CARTESIA_TTS_PROVIDER;
 
@@ -189,7 +198,8 @@ export async function POST(req: NextRequest) {
     );
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
-    const status = (err as NodeJS.ErrnoException).code === "UNAUTHORIZED" ? 401 : 500;
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
     return NextResponse.json({ error: errorMsg }, { status });
   }
 }

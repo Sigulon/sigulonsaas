@@ -1,16 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Papa from "papaparse";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { VoiceAgent } from "@/lib/types";
+import { normalizePhone } from "@/lib/phone";
 import {
   UploadCloud,
   FileSpreadsheet,
   CheckCircle2,
   AlertTriangle,
+  XCircle,
   Loader2,
   Users,
   Play,
@@ -42,6 +44,14 @@ export function CampaignWizard({
   const [fileName, setFileName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Agents load after mount on the campaigns page — adopt the first agent
+  // once available instead of leaving Continue permanently disabled.
+  useEffect(() => {
+    if (!selectedAgentId && agents.length > 0 && agents[0]?.id) {
+      setSelectedAgentId(agents[0].id);
+    }
+  }, [agents, selectedAgentId]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -112,10 +122,15 @@ export function CampaignWizard({
 
       const campaignId = createData.campaign.id;
 
-      // 2. Launch execution of campaign batch queue
-      await fetch(`/api/campaigns/${campaignId}/start`, {
+      // 2. Launch execution of campaign batch queue — a failed start must
+      // not look like a launch: surface it and keep the wizard open.
+      const startRes = await fetch(`/api/campaigns/${campaignId}/start`, {
         method: "POST",
       });
+      if (!startRes.ok) {
+        const startData = await startRes.json().catch(() => ({}));
+        throw new Error((startData as { error?: string }).error || "Campaign created but failed to start");
+      }
 
       onCampaignCreated();
       onClose();
@@ -249,16 +264,26 @@ export function CampaignWizard({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {parsedContacts.slice(0, 5).map((c, i) => (
+                  {parsedContacts.slice(0, 5).map((c, i) => {
+                    const valid = Boolean(normalizePhone(c.phone_number));
+                    return (
                     <tr key={i}>
                       <td className="p-2 text-slate-800 dark:text-slate-200">{c.name}</td>
                       <td className="p-2 font-mono text-slate-600 dark:text-slate-400">{c.phone_number}</td>
+                      {valid ? (
                       <td className="p-2 text-emerald-600 flex items-center gap-1">
                         <CheckCircle2 className="h-3 w-3" />
                         Valid
                       </td>
+                      ) : (
+                      <td className="p-2 text-red-600 flex items-center gap-1">
+                        <XCircle className="h-3 w-3" />
+                        Invalid
+                      </td>
+                      )}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
               {parsedContacts.length > 5 && (

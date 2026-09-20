@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import {
   UserRepository,
   OrganizationRepository,
@@ -10,7 +11,7 @@ import {
   CARTESIA_STT_PROVIDER,
   CARTESIA_TTS_MODEL,
   CARTESIA_TTS_PROVIDER,
-  OPENROUTER_GEMINI_25_FLASH,
+  OPENROUTER_DEFAULT_MODEL,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -43,12 +44,21 @@ export async function POST(req: NextRequest) {
     }
 
     const passwordHash = await hashPassword(password);
+    // Do NOT self-verify: the address is unverified until the holder
+    // completes the /api/auth/verify-email token flow. A verification token
+    // is minted here so that flow can complete.
+    // TODO: gate the 50-credit welcome grant (and/or outbound dialing) behind
+    // emailVerified=true once a signup verification email sender exists.
+    // Today no verification email is sent, so the trial grant below activates
+    // on an unverified email — accepted trial-on-unverified risk, documented.
+    const { randomBytes } = crypto;
     const user = await UserRepository.create({
       email,
       passwordHash,
       name: name || companyName || email.split("@")[0],
       status: "active",
-      emailVerified: true,
+      emailVerified: false,
+      verificationToken: randomBytes(32).toString("hex"),
     });
 
     const orgName = companyName || `${user.name || "My"} Organization`;
@@ -90,7 +100,7 @@ export async function POST(req: NextRequest) {
         },
         intelligence: {
           provider: "openrouter",
-          model: OPENROUTER_GEMINI_25_FLASH,
+          model: OPENROUTER_DEFAULT_MODEL,
           temperature: 0.7,
         },
         speech: {

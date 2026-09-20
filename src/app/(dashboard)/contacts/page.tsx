@@ -27,34 +27,42 @@ export default function ContactsPage() {
   const [dnc, setDnc] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchContacts = useCallback(async () => {
+  const fetchContacts = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/contacts?search=${encodeURIComponent(search)}`);
+      const res = await fetch(`/api/contacts?search=${encodeURIComponent(search)}`, { signal });
       if (res.ok) {
         const data = await res.json();
         setContacts(data.contacts || []);
       }
     } catch (e) {
-      console.error(e);
+      if ((e as Error)?.name !== "AbortError") console.error(e);
     } finally {
       setLoading(false);
     }
   }, [search]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- benign mount-fetch idiom.
-    fetchContacts();
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- benign mount-fetch idiom.
+      fetchContacts(controller.signal);
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [fetchContacts]);
 
   const handleToggleDNC = async (contact: Contact) => {
     const newDnc = !contact.do_not_call;
     try {
-      await fetch("/api/contacts", {
+      const res = await fetch("/api/contacts", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: contact.id, do_not_call: newDnc }),
       });
+      if (!res.ok) return;
       setContacts((prev) =>
         prev.map((c) => (c.id === contact.id ? { ...c, do_not_call: newDnc } : c))
       );

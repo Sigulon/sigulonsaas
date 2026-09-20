@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
+import { canCreateAndRun } from "@/lib/roles";
 import {
   AgentRepository,
   PhoneNumberRepository,
@@ -10,7 +11,7 @@ import {
   CARTESIA_STT_PROVIDER,
   CARTESIA_TTS_MODEL,
   CARTESIA_TTS_PROVIDER,
-  OPENROUTER_GEMINI_25_FLASH,
+  OPENROUTER_DEFAULT_MODEL,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +54,7 @@ export async function GET(
           intelligence: {
             ...agent.config.intelligence,
             provider: "openrouter",
-            model: OPENROUTER_GEMINI_25_FLASH,
+            model: OPENROUTER_DEFAULT_MODEL,
           },
           speech: {
             ...agent.config.speech,
@@ -70,7 +71,7 @@ export async function GET(
         system_prompt: agent.config.instructions.systemPrompt,
         introduction: agent.config.instructions.greeting,
         llm_provider: "openrouter",
-        llm_model: OPENROUTER_GEMINI_25_FLASH,
+        llm_model: OPENROUTER_DEFAULT_MODEL,
         stt_provider: CARTESIA_STT_PROVIDER,
         enabled_tools: agent.config.tools.enabledTools,
         phone_numbers: linkedNumbers.map((p) => ({
@@ -97,7 +98,13 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { orgId, userId } = await getOrgContext();
+    const { orgId, userId, role } = await getOrgContext();
+    if (!canCreateAndRun(role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
     const body = await req.json();
 
     const existingAgent = await AgentRepository.findById(id, orgId);
@@ -124,7 +131,7 @@ export async function PATCH(
       intelligence: {
         ...existingAgent.config.intelligence,
         provider: "openrouter",
-        model: OPENROUTER_GEMINI_25_FLASH,
+        model: OPENROUTER_DEFAULT_MODEL,
       },
       speech: {
         ...existingAgent.config.speech,
@@ -159,7 +166,7 @@ export async function PATCH(
       partialConfig.intelligence = {
         ...(partialConfig.intelligence || existingAgent.config.intelligence),
         provider: "openrouter",
-        model: OPENROUTER_GEMINI_25_FLASH,
+        model: OPENROUTER_DEFAULT_MODEL,
       };
     }
     if (body.sttProvider || body.stt_provider || body.ttsProvider || body.tts_provider) {
@@ -186,6 +193,12 @@ export async function PATCH(
       config: Object.keys(partialConfig).length > 0 ? partialConfig : undefined,
     });
 
+    // updateDraft returns null when the row vanished between the read above
+    // and the write (concurrent delete) — never hand back { agent: null } 200.
+    if (!updated) {
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
+
     return NextResponse.json({ agent: updated });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
@@ -200,7 +213,13 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const { orgId } = await getOrgContext();
+    const { orgId, role } = await getOrgContext();
+    if (!canCreateAndRun(role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
 
     const deleted = await AgentRepository.delete(id, orgId);
     if (!deleted) {

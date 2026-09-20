@@ -41,10 +41,16 @@ export class DncRepository {
     reason?: string
   ): Promise<IDncEntry> {
     await connectToDatabase();
+    // Normalize the value so "+91 98765 43210" and "+919876543210" hit the
+    // same unique row instead of creating duplicates.
+    const digits = (normalizedPhone || "").replace(/\D/g, "");
+    const normalized = normalizedPhone.trim().startsWith("+") && digits
+      ? `+${digits}`
+      : normalizedPhone.trim();
     return DncEntryModel.findOneAndUpdate(
-      { organizationId: orgId, normalizedPhone },
-      { reason: reason || "" },
-      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }
+      { organizationId: orgId, normalizedPhone: normalized },
+      { $set: { reason: reason || "" } },
+      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true, runValidators: true }
     ).exec() as Promise<IDncEntry>;
   }
 

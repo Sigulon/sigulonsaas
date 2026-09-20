@@ -10,6 +10,9 @@ export function proxy(request: NextRequest) {
   const isPublicApi =
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/webhooks/") ||
+    // /api/internal/ uses its own service-to-service Bearer check
+    // (require_internal_secret), not the session cookie — it must stay
+    // reachable at the edge for callers with no cookie (worker/runtime).
     pathname.startsWith("/api/internal/") ||
     pathname.startsWith("/api/readyz") ||
     pathname.startsWith("/api/healthz") ||
@@ -25,10 +28,8 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // In development, allow requests to proceed so MongoDB data can be accessed seamlessly.
-  if (process.env.NODE_ENV !== "production") {
-    return NextResponse.next();
-  }
+  // Auth applies in every environment (dev included): route-level session
+  // checks are the last line of defense, never the only one.
 
   // Protect all dashboard pages and non-public API routes
   if (!sessionToken && !isAuthPage && !isPublicApi && pathname !== "/") {

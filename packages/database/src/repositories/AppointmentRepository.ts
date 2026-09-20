@@ -50,6 +50,12 @@ export class AppointmentRepository {
           startTime: { $lt: endTime },
           endTime: { $gt: startTime },
         },
+        // Timeless rows (no endTime) occupy their start instant: they block
+        // any window that contains that instant.
+        {
+          startTime: { $gte: startTime, $lt: endTime },
+          endTime: { $exists: false },
+        },
       ],
     }).exec();
 

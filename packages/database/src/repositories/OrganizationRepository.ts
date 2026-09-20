@@ -108,8 +108,8 @@ export class OrganizationRepository {
     await connectToDatabase();
     return OrganizationMemberModel.findOneAndUpdate(
       { organizationId: data.organizationId, userId: data.userId },
-      { role: data.role },
-      { upsert: true, returnDocument: "after" }
+      { $set: { role: data.role } },
+      { upsert: true, returnDocument: "after", runValidators: true }
     ).exec() as Promise<IOrganizationMember>;
   }
 

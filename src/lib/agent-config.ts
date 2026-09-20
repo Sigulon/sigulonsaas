@@ -4,7 +4,7 @@ import {
   CARTESIA_STT_PROVIDER,
   CARTESIA_TTS_MODEL,
   CARTESIA_TTS_PROVIDER,
-  OPENROUTER_GEMINI_25_FLASH,
+  OPENROUTER_DEFAULT_MODEL,
 } from "./types";
 
 /**
@@ -123,7 +123,7 @@ export function toCanonicalAgentConfig(
     },
     intelligence: {
       provider: "openrouter",
-      model: OPENROUTER_GEMINI_25_FLASH,
+      model: OPENROUTER_DEFAULT_MODEL,
     },
     speech: {
       stt_provider: CARTESIA_STT_PROVIDER,

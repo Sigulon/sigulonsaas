@@ -1,4 +1,11 @@
-export type CampaignStatus = "draft" | "queued" | "running" | "paused" | "completed" | "failed";
+export type CampaignStatus =
+  | "draft"
+  | "queued"
+  | "running"
+  | "paused"
+  | "completed"
+  | "failed"
+  | "cancelled"; // DB Campaign model uses draft|running|paused|completed|cancelled; queued/failed kept for worker transitional reads.
 
 export type CampaignContactStatus =
   | "pending"

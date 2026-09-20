@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
+import { canCreateAndRun } from "@/lib/roles";
 import { AppointmentRepository, AppointmentStatus } from "@sigulon/database";
 import { z } from "zod";
 
@@ -42,7 +43,13 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { orgId } = await getOrgContext();
+    const { orgId, role } = await getOrgContext();
+    if (!canCreateAndRun(role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
     const body = await req.json();
     const parsed = CreateAppointmentSchema.safeParse(body);
 
@@ -85,13 +92,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ appointment }, { status: 201 });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to create appointment";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { orgId } = await getOrgContext();
+    const { orgId, role } = await getOrgContext();
+    if (!canCreateAndRun(role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
     const body = await req.json();
     const parsed = UpdateAppointmentSchema.safeParse(body);
 
@@ -115,6 +130,8 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ appointment: updated });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Failed to update appointment";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const code = (err as NodeJS.ErrnoException).code;
+    const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }

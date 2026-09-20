@@ -67,9 +67,12 @@ export async function ensureAllIndexes(): Promise<void> {
   for (const model of models) {
     try {
       await model.createCollection();
-      await model.syncIndexes();
+      // Create-only: never drop indexes here. syncIndexes() would silently
+      // delete manually-added operational indexes (TTL, text, hotfix
+      // compounds) whenever seed/create-tables runs against a live DB.
+      await model.ensureIndexes();
     } catch (err) {
-      console.warn(`[database/indexes] Warning syncing indexes for ${model.modelName}:`, err);
+      console.warn(`[database/indexes] Warning ensuring indexes for ${model.modelName}:`, err);
     }
   }
 }

@@ -22,6 +22,7 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(true);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -54,15 +55,20 @@ export default function CampaignsPage() {
 
   const handleStartBatch = async (campaignId: string) => {
     setActionInProgress(campaignId);
+    setActionError(null);
     try {
       const res = await fetch(`/api/campaigns/${campaignId}/start`, {
         method: "POST",
       });
       if (res.ok) {
         await loadData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setActionError((data as { error?: string }).error || `Start failed (${res.status}). Please retry.`);
       }
     } catch (e) {
       console.error("Batch dispatch error", e);
+      setActionError("Start failed. Please check your connection and retry.");
     } finally {
       setActionInProgress(null);
     }
@@ -92,6 +98,11 @@ export default function CampaignsPage() {
       </div>
 
       {/* Campaigns Grid */}
+      {actionError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+          {actionError}
+        </div>
+      )}
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center text-slate-400">
           <Loader2 className="h-8 w-8 animate-spin text-indigo-600 mb-2" />

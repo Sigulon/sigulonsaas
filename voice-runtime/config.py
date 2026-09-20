@@ -30,6 +30,17 @@ from language import CARTESIA_TTS_MODEL
 
 log = logging.getLogger("voice-runtime.config")
 
+OPENROUTER_DEFAULT_MODEL_ENV_VAR = "OPENROUTER_MODEL"
+OPENROUTER_FALLBACK_MODEL = "google/gemini-2.5-flash"
+
+
+def default_openrouter_model() -> str:
+    """Effective runtime LLM model. Override with the OPENROUTER_MODEL env var."""
+    return (
+        os.getenv(OPENROUTER_DEFAULT_MODEL_ENV_VAR, OPENROUTER_FALLBACK_MODEL)
+        or OPENROUTER_FALLBACK_MODEL
+    ).strip() or OPENROUTER_FALLBACK_MODEL
+
 # ---------------------------------------------------------------------------
 # Template variable resolution (clean greetings before Cartesia TTS)
 # ---------------------------------------------------------------------------
@@ -283,8 +294,8 @@ class AgentConfig(BaseModel):
         description="LLM vendor (OpenRouter).",
     )
     llm_model: str = Field(
-        default="google/gemini-2.5-flash",
-        description="LLM model id.",
+        default_factory=default_openrouter_model,
+        description="LLM model id (OPENROUTER_MODEL env, default google/gemini-2.5-flash).",
     )
 
     # Prompt context (informational: system_prompt is pre-generated server-side
@@ -317,7 +328,7 @@ class AgentConfig(BaseModel):
     def normalize_voice_stack(self) -> "AgentConfig":
         """Keep cached and legacy agent records on the supported voice stack."""
         self.llm_provider = "openrouter"
-        self.llm_model = "google/gemini-2.5-flash"
+        self.llm_model = default_openrouter_model()
         self.stt_provider = "cartesia"
         self.stt_model = None
         self.tts_provider = "cartesia"
@@ -366,6 +377,7 @@ class AgentConfig(BaseModel):
             "tools": list(self.enabled_tools),
             "settings": {
                 "max_call_duration_seconds": self.max_call_seconds,
+                "max_concurrent_calls": self.max_concurrent_calls,
                 "silence_timeout_seconds": self.silence_timeout_seconds,
                 "record_calls": self.record_calls,
             },
@@ -380,6 +392,11 @@ class AgentConfig(BaseModel):
         intelligence = data.get("intelligence", {})
         speech = data.get("speech", {})
         settings = data.get("settings", {})
+        try:
+            limit = int(settings.get("max_concurrent_calls", data.get("max_concurrent_calls", 5)))
+        except (TypeError, ValueError):
+            limit = 5
+        limit = max(1, min(50, limit))
         return cls(
             call_id=data.get("call_id", ""),
             agent_id=data.get("id", ""),
@@ -398,12 +415,13 @@ class AgentConfig(BaseModel):
             voice_id=voice.get("voice_id", ""),
             voice_speed=float(voice.get("speed", 1.0)),
             llm_provider=intelligence.get("provider", "openrouter"),
-            llm_model=intelligence.get("model", "google/gemini-2.5-flash"),
+            llm_model=intelligence.get("model") or default_openrouter_model(),
             stt_provider="cartesia",
             stt_model=None,
             tts_provider="cartesia",
             tts_model=CARTESIA_TTS_MODEL,
             enabled_tools=list(data.get("tools", [])),
+            max_concurrent_calls=limit,
             max_call_seconds=int(
                 settings.get("max_call_duration_seconds", 1800)),
             silence_timeout_seconds=int(
@@ -608,7 +626,7 @@ async def _load_agent_config_from_mongodb(call_id: str) -> AgentConfig:
             voice_id=voice.get("voiceId") or voice.get("voice_id") or "",
             voice_speed=float(voice.get("speed", 1.0)),
             llm_provider=intelligence.get("provider") or "openrouter",
-            llm_model=intelligence.get("model") or "google/gemini-2.5-flash",
+            llm_model=intelligence.get("model") or default_openrouter_model(),
             stt_provider=speech.get("sttProvider") or "cartesia",
             stt_model=speech.get("sttModel"),
             tts_provider=speech.get("ttsProvider") or "cartesia",
@@ -629,20 +647,30 @@ async def _load_agent_config_from_mongodb(call_id: str) -> AgentConfig:
 # ---------------------------------------------------------------------------
 
 
-async def acquire_concurrency_slot(tenant_id: str, limit: int) -> tuple[bool, int]:
-    """Increment the tenant's active-call counter if under ``limit``."""
+async def acquire_concurrency_slot(tenant_id: str, limit: int, call_id: str = "") -> tuple[bool, int]:
+    """Increment the tenant's active-call counter if under ``limit``.
+
+    Idempotent per ``call_id``: a transport retry or duplicate socket for the
+    same call never double-counts. The TTL is refreshed on every INCR so a
+    long-lived busy tenant cannot have its counter silently expire mid-call.
+    """
+    if call_id:
+        held = _local_tenant_slots.get(f"held:{call_id}")
+        if held:
+            return True, int(_local_tenant_slots.get(tenant_id, 1))
     try:
         redis_client = get_redis()
         key = TENANT_ACTIVE_CALLS_KEY.format(tenant_id=tenant_id)
         count = int(await redis_client.incr(key))
-        if count == 1:
-            await redis_client.expire(key, ACTIVE_CALLS_KEY_TTL_SECS)
+        await redis_client.expire(key, ACTIVE_CALLS_KEY_TTL_SECS)
         if count > limit:
             await redis_client.decr(key)
             log.warning(
                 "Concurrency limit hit for tenant %s (%d/%d)", tenant_id, count - 1, limit
             )
             return False, count - 1
+        if call_id:
+            _local_tenant_slots[f"held:{call_id}"] = 1
         log.info("Concurrency slot acquired for tenant %s (%d/%d)", tenant_id, count, limit)
         return True, count
     except Exception as exc:
@@ -674,8 +702,15 @@ async def acquire_concurrency_slot(tenant_id: str, limit: int) -> tuple[bool, in
         ) from exc
 
 
-async def release_concurrency_slot(tenant_id: str) -> int:
-    """Decrement the tenant's active-call counter, floored at zero."""
+async def release_concurrency_slot(tenant_id: str, call_id: str = "") -> int:
+    """Decrement the tenant's active-call counter, floored at zero.
+
+    Releases at most once per ``call_id``: duplicate finalize paths for one
+    call converge to a single release instead of leaking or double-freeing.
+    """
+    if call_id:
+        if not _local_tenant_slots.pop(f"held:{call_id}", None):
+            return _local_tenant_slots.get(tenant_id, 0)
     if tenant_id in _local_tenant_slots:
         _local_tenant_slots[tenant_id] = max(0, _local_tenant_slots[tenant_id] - 1)
 
