@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Model } from "mongoose";
 export interface IProviderAccount extends Document {
   _id: mongoose.Types.ObjectId;
   organizationId: mongoose.Types.ObjectId;
-  provider: string; // "cartesia" | "plivo" | "openrouter"
+  provider: string; // "cartesia" | "plivo"
   credentialsEncrypted: string;
   encryptionIv: string;
   status: "active" | "error" | "revoked";

@@ -1,6 +1,5 @@
 import { AgentBundle } from "./agent-bundle/schema";
-import { validateAgentBundle, repairAgentBundle } from "./agent-bundle/validator";
-import { OPENROUTER_DEFAULT_MODEL } from "./types";
+import { repairAgentBundle } from "./agent-bundle/validator";
 
 export interface SectionDiff {
   section_key: string;
@@ -28,86 +27,28 @@ export async function applyAiAssist(
   bundle: AgentBundle,
   instruction: string
 ): Promise<AiAssistResult> {
-  const openRouterKey = process.env.OPENROUTER_API_KEY;
-  const model = process.env.OPENROUTER_MODEL || OPENROUTER_DEFAULT_MODEL;
+  const clone = JSON.parse(JSON.stringify(bundle)) as AgentBundle;
+  const lower = instruction.toLowerCase();
 
-  let modified: AgentBundle | null = null;
-
-  if (openRouterKey) {
-    try {
-      const systemPrompt = `You are an AI assistant that edits Sigulon voice agent bundles (bundle_version 2).
-You will receive an existing Agent Bundle JSON and an editing instruction from the user.
-Your job is to apply the requested changes carefully to the bundle.
-
-RULES:
-1. Return ONLY the modified Agent Bundle as a raw JSON object.
-2. Maintain bundle_version === 2.
-3. Keep the graph valid (no orphan sections, terminal close section has edges: null, faqs section has edges: null and exact disclaimer).
-4. Exactly one phone variable (key "phone") and one lead_name variable (key "lead_name").
-5. Every {{var}} used in first_response or any prompt must exist in variables[].
-6. Every section prompt must end with "For example you might say: '...'".
-7. Apply the instruction precisely (e.g. adjust politeness, add a section, rephrase questions, etc.).`;
-
-      const userMessage = `Current Bundle:\n${JSON.stringify(bundle, null, 2)}\n\nUser Instruction:\n"${instruction}"\n\nReturn ONLY the modified valid JSON bundle.`;
-
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openRouterKey}`,
-          "HTTP-Referer": "https://sigulon.ai",
-          "X-Title": "Sigulon AI Assist",
-        },
-        body: JSON.stringify({
-          model,
-          temperature: 0.3,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userMessage },
-          ],
-        }),
-        signal: AbortSignal.timeout(25000),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const content = data.choices?.[0]?.message?.content;
-        if (content) {
-          const repaired = repairAgentBundle(content);
-          if (validateAgentBundle(repaired).valid) {
-            modified = repaired;
-          }
-        }
+  if (lower.includes("polite") || lower.includes("respectful")) {
+    clone.sections.forEach((s) => {
+      if (!s.prompt.includes("దయచేసి") && !s.prompt.includes("అండి")) {
+        s.prompt = s.prompt.replace("For example", "దయచేసి వినయంగా మాట్లాడండి. For example");
       }
-    } catch (err) {
-      console.warn("[applyAiAssist] OpenRouter assist error:", err);
-    }
+    });
+  } else if (lower.includes("short") || lower.includes("concise") || lower.includes("brief")) {
+    clone.sections.forEach((s) => {
+      s.prompt = s.prompt.replace("For example", "Keep reply under 15 words. For example");
+    });
+  } else {
+    clone.sections.forEach((s) => {
+      if (s.section_key !== "faqs") {
+        s.prompt += ` Note: ${instruction}`;
+      }
+    });
   }
 
-  // Fallback heuristic if LLM unavailable
-  if (!modified) {
-    const clone = JSON.parse(JSON.stringify(bundle)) as AgentBundle;
-    const lower = instruction.toLowerCase();
-    if (lower.includes("polite") || lower.includes("respectful")) {
-      clone.sections.forEach((s) => {
-        if (!s.prompt.includes("దయచేసి") && !s.prompt.includes("అండి")) {
-          s.prompt = s.prompt.replace("For example", "దయచేసి వినయంగా మాట్లాడండి. For example");
-        }
-      });
-    } else if (lower.includes("short") || lower.includes("concise") || lower.includes("brief")) {
-      clone.sections.forEach((s) => {
-        s.prompt = s.prompt.replace("For example", "Keep reply under 15 words. For example");
-      });
-    } else {
-      clone.sections.forEach((s) => {
-        if (s.section_key !== "faqs") {
-          s.prompt += ` Note: ${instruction}`;
-        }
-      });
-    }
-    modified = repairAgentBundle(clone as unknown as Record<string, unknown>);
-  }
+  const modified = repairAgentBundle(clone as unknown as Record<string, unknown>);
 
   // Compute diff
   const diffSections: SectionDiff[] = [];

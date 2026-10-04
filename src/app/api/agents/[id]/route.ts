@@ -7,12 +7,7 @@ import {
   CallModel,
   type CanonicalAgentConfig,
 } from "@sigulon/database";
-import {
-  CARTESIA_STT_PROVIDER,
-  CARTESIA_TTS_MODEL,
-  CARTESIA_TTS_PROVIDER,
-  OPENROUTER_DEFAULT_MODEL,
-} from "@/lib/types";
+import { VOICE_STACK } from "@/lib/voice-config";
 
 export const dynamic = "force-dynamic";
 
@@ -48,20 +43,20 @@ export async function GET(
           ...agent.config,
           voice: {
             ...agent.config.voice,
-            provider: CARTESIA_TTS_PROVIDER,
-            model: CARTESIA_TTS_MODEL,
+            provider: VOICE_STACK.TTS.PROVIDER,
+            model: VOICE_STACK.TTS.MODEL,
           },
           intelligence: {
             ...agent.config.intelligence,
-            provider: "openrouter",
-            model: OPENROUTER_DEFAULT_MODEL,
+            provider: VOICE_STACK.LLM.PROVIDER,
+            model: VOICE_STACK.LLM.MODEL,
           },
           speech: {
             ...agent.config.speech,
-            sttProvider: CARTESIA_STT_PROVIDER,
-            sttModel: "ink-whisper",
-            ttsProvider: CARTESIA_TTS_PROVIDER,
-            ttsModel: CARTESIA_TTS_MODEL,
+            sttProvider: VOICE_STACK.STT.PROVIDER,
+            sttModel: VOICE_STACK.STT.MODEL,
+            ttsProvider: VOICE_STACK.TTS.PROVIDER,
+            ttsModel: VOICE_STACK.TTS.MODEL,
           },
         },
         specification: agent.specification,
@@ -71,9 +66,9 @@ export async function GET(
         voice_id: agent.config.voice.voiceId,
         system_prompt: agent.config.instructions.systemPrompt,
         introduction: agent.config.instructions.greeting,
-        llm_provider: "openrouter",
-        llm_model: OPENROUTER_DEFAULT_MODEL,
-        stt_provider: CARTESIA_STT_PROVIDER,
+        llm_provider: VOICE_STACK.LLM.PROVIDER,
+        llm_model: VOICE_STACK.LLM.MODEL,
+        stt_provider: VOICE_STACK.STT.PROVIDER,
         enabled_tools: agent.config.tools.enabledTools,
         phone_numbers: linkedNumbers.map((p) => ({
           id: p._id.toString(),
@@ -126,20 +121,20 @@ export async function PATCH(
     const partialConfig: Partial<CanonicalAgentConfig> = {
       voice: {
         ...existingAgent.config.voice,
-        provider: CARTESIA_TTS_PROVIDER,
-        model: CARTESIA_TTS_MODEL,
+        provider: VOICE_STACK.TTS.PROVIDER,
+        model: VOICE_STACK.TTS.MODEL,
       },
       intelligence: {
         ...existingAgent.config.intelligence,
-        provider: "openrouter",
-        model: OPENROUTER_DEFAULT_MODEL,
+        provider: VOICE_STACK.LLM.PROVIDER,
+        model: VOICE_STACK.LLM.MODEL,
       },
       speech: {
         ...existingAgent.config.speech,
-        sttProvider: CARTESIA_STT_PROVIDER,
-        sttModel: "ink-whisper",
-        ttsProvider: CARTESIA_TTS_PROVIDER,
-        ttsModel: CARTESIA_TTS_MODEL,
+        sttProvider: VOICE_STACK.STT.PROVIDER,
+        sttModel: VOICE_STACK.STT.MODEL,
+        ttsProvider: VOICE_STACK.TTS.PROVIDER,
+        ttsModel: VOICE_STACK.TTS.MODEL,
       },
     };
     if (body.voiceId || body.voice_id) {
@@ -166,17 +161,17 @@ export async function PATCH(
     if (body.llmProvider || body.llm_provider || body.llmModel || body.llm_model) {
       partialConfig.intelligence = {
         ...(partialConfig.intelligence || existingAgent.config.intelligence),
-        provider: "openrouter",
-        model: OPENROUTER_DEFAULT_MODEL,
+        provider: VOICE_STACK.LLM.PROVIDER,
+        model: VOICE_STACK.LLM.MODEL,
       };
     }
     if (body.sttProvider || body.stt_provider || body.ttsProvider || body.tts_provider) {
       partialConfig.speech = {
         ...existingAgent.config.speech,
-        sttProvider: CARTESIA_STT_PROVIDER,
-        sttModel: "ink-whisper",
-        ttsProvider: CARTESIA_TTS_PROVIDER,
-        ttsModel: CARTESIA_TTS_MODEL,
+        sttProvider: VOICE_STACK.STT.PROVIDER,
+        sttModel: VOICE_STACK.STT.MODEL,
+        ttsProvider: VOICE_STACK.TTS.PROVIDER,
+        ttsModel: VOICE_STACK.TTS.MODEL,
       };
     }
     if (body.enabledTools || body.enabled_tools) {

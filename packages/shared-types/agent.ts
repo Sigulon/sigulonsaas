@@ -1,5 +1,5 @@
-export type LLMProvider = "openrouter";
-export type STTProvider = "cartesia";
+export type LLMProvider = "livekit-inference";
+export type STTProvider = "livekit-inference";
 export type TTSProvider = "cartesia";
 export type TelephonyService = "plivo" | "twilio";
 

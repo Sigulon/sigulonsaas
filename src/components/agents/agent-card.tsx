@@ -21,7 +21,6 @@ import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { TestCallDialog } from "./test-call-dialog";
-import { AgentEditorDialog } from "./agent-editor-dialog";
 import { WebVoiceTesterModal } from "./web-voice-tester-modal";
 
 interface AgentCardProps {
@@ -31,7 +30,6 @@ interface AgentCardProps {
 
 export function AgentCard({ agent, onRefresh }: AgentCardProps) {
   const [isTestCallOpen, setIsTestCallOpen] = useState(false);
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isWebTesterOpen, setIsWebTesterOpen] = useState(false);
   const [isAttachModalOpen, setIsAttachModalOpen] = useState(false);
   const [availableNumbers, setAvailableNumbers] = useState<Array<{ id: string; phoneNumber: string; agentId: string | null }>>([]);
@@ -211,13 +209,15 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
           </div>
 
           <Button
+            asChild
             size="sm"
             variant="ghost"
-            onClick={() => setIsEditorOpen(true)}
             className="w-full text-xs text-slate-500 hover:text-slate-900 flex items-center justify-center gap-1"
           >
-            <Edit className="h-3 w-3" />
-            Configure Agent Settings
+            <Link href={`/agents/${agent.id}/edit`}>
+              <Edit className="h-3 w-3" />
+              Configure Agent Settings
+            </Link>
           </Button>
         </CardFooter>
       </Card>
@@ -226,13 +226,6 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
         isOpen={isTestCallOpen}
         onClose={() => setIsTestCallOpen(false)}
         defaultAgentId={agent.id}
-      />
-
-      <AgentEditorDialog
-        isOpen={isEditorOpen}
-        onClose={() => setIsEditorOpen(false)}
-        agent={agent}
-        onSaved={onRefresh}
       />
 
       <WebVoiceTesterModal

@@ -3,7 +3,6 @@ import { getOrgContext } from "@/lib/auth-helpers";
 import { canCreateAndRun } from "@/lib/roles";
 import { AgentRepository } from "@sigulon/database";
 import { CartesiaClient } from "@/lib/cartesia";
-import { OPENROUTER_DEFAULT_MODEL } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -102,101 +101,9 @@ export async function POST(
       });
     }
 
-    // 3. Conversation Turn Generation (LLM or Deep Prompt Reasoner)
+    // 3. Conversation Turn Generation
     let replyText = "";
-
-    const openRouterKey = process.env.OPENROUTER_API_KEY;
-    const openRouterModel = OPENROUTER_DEFAULT_MODEL;
-
-    // 3A. OpenRouter API (Primary - Gemini 2.5 Flash)
-    if (openRouterKey && !replyText) {
-      try {
-        const promptLang =
-          language === "hi"
-            ? "Hindi"
-            : language === "te"
-            ? "Telugu"
-            : language === "ta"
-            ? "Tamil"
-            : language === "kn"
-            ? "Kannada"
-            : language === "bn"
-            ? "Bengali"
-            : language === "mr"
-            ? "Marathi"
-            : language === "gu"
-            ? "Gujarati"
-            : language === "ml"
-            ? "Malayalam"
-            : language === "pa"
-            ? "Punjabi"
-            : "Indian English";
-
-        const messages = [
-          {
-            role: "system",
-            content: `${systemPrompt}\n\nCRITICAL FOR SPOKEN VOICE TELEPHONE CALL: You are on a live telephone voice call. Keep responses to 1-2 brief spoken sentences only (maximum 30 words). Respond naturally, politely, and fluently in ${promptLang} (${language}). Do NOT use markdown, bullet points, asterisks, reasoning, or lists. Speak directly as the voice assistant on the phone.`,
-          },
-          ...history.slice(-6).map((h: HistoryItem) => ({ role: h.role, content: h.content })),
-          { role: "user", content: message },
-        ];
-
-        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${openRouterKey}`,
-            "HTTP-Referer": "http://localhost:3000",
-            "X-Title": "Sigulon Voice",
-          },
-          body: JSON.stringify({
-            model: openRouterModel,
-            temperature: 0.7,
-            max_tokens: 1500,
-            messages,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          let rawReply = data.choices?.[0]?.message?.content?.trim() || "";
-          rawReply = rawReply.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-
-          // Fallback if content was empty due to reasoning output
-          if (!rawReply && data.choices?.[0]?.message?.reasoning) {
-            const r = data.choices[0].message.reasoning;
-            const match = r.match(/["']([^"']{10,120})["']/);
-            if (match) rawReply = match[1];
-          }
-
-          if (rawReply) {
-            replyText = rawReply;
-          }
-        } else {
-          console.warn("OpenRouter API error response:", res.status, await res.text());
-        }
-      } catch (e) {
-        console.warn("OpenRouter fetch error:", e);
-      }
-    }
-    // 3B. Keyword heuristic — dev-only playground fallback, never a
-    // production answer. In production without an LLM key, fail loudly so
-    // nobody mistakes canned replies for the agent (override with
-    // ALLOW_HEURISTIC_FALLBACK=true for demos).
-    if (!replyText) {
-      if (
-        process.env.NODE_ENV === "production" &&
-        process.env.ALLOW_HEURISTIC_FALLBACK !== "true"
-      ) {
-        return NextResponse.json(
-          {
-            error:
-              "No LLM provider is configured for test sessions. Set OPENROUTER_API_KEY.",
-          },
-          { status: 503 }
-        );
-      }
-      const lower = message.toLowerCase();
+    const lower = message.toLowerCase();
 
       // Extract specific business facts from the agent's system prompt
       const bizMatch = systemPrompt.match(/Business Overview:\s*([^\n]+)/i);

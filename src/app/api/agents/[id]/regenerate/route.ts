@@ -4,7 +4,7 @@ import { canCreateAndRun } from "@/lib/roles";
 import { AgentRepository } from "@sigulon/database";
 import { applyAiAssist } from "@/lib/agent-assist";
 import { generateAgentWithLlm } from "@/lib/agent-generation";
-import { compileBundleToSystemPrompt } from "@/lib/agent-bundle-generator";
+import { compileBundleToSystemPrompt } from "@/lib/agent-bundle";
 import { AgentBundle } from "@/lib/agent-bundle/schema";
 
 export const dynamic = "force-dynamic";

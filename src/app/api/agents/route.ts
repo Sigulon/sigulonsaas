@@ -5,14 +5,9 @@ import {
   AgentRepository,
   PhoneNumberRepository,
 } from "@sigulon/database";
-import { compileBundleToSystemPrompt } from "@/lib/agent-bundle-generator";
+import { compileBundleToSystemPrompt } from "@/lib/agent-bundle";
 import { repairAgentBundle, validateAgentBundle } from "@sigulon/agent-schema/validation";
-import {
-  CARTESIA_STT_PROVIDER,
-  CARTESIA_TTS_MODEL,
-  CARTESIA_TTS_PROVIDER,
-  OPENROUTER_DEFAULT_MODEL,
-} from "@/lib/types";
+import { VOICE_STACK } from "@/lib/voice-config";
 
 export const dynamic = "force-dynamic";
 
@@ -51,9 +46,9 @@ export async function GET() {
         system_prompt: ag.config.instructions.systemPrompt,
         introduction: ag.config.instructions.greeting || "",
         status: ag.status,
-        llm_provider: "openrouter",
-        llm_model: OPENROUTER_DEFAULT_MODEL,
-        stt_provider: CARTESIA_STT_PROVIDER,
+        llm_provider: VOICE_STACK.LLM.PROVIDER,
+        llm_model: VOICE_STACK.LLM.MODEL,
+        stt_provider: VOICE_STACK.STT.PROVIDER,
         enabled_tools: ag.config.tools.enabledTools,
         phone_numbers: numbers,
         description: ag.description || null,
@@ -105,10 +100,10 @@ export async function POST(req: NextRequest) {
       bundle: requestedBundle,
       status: agentStatus = "active",
     } = body;
-    const llmProvider = "openrouter";
-    const llmModel = OPENROUTER_DEFAULT_MODEL;
-    const sttProvider = CARTESIA_STT_PROVIDER;
-    const ttsProvider = CARTESIA_TTS_PROVIDER;
+    const llmProvider = VOICE_STACK.LLM.PROVIDER;
+    const llmModel = VOICE_STACK.LLM.MODEL;
+    const sttProvider = VOICE_STACK.STT.PROVIDER;
+    const ttsProvider = VOICE_STACK.TTS.PROVIDER;
 
     let bundle = requestedBundle;
     let systemPrompt = requestedSystemPrompt;
@@ -154,7 +149,7 @@ export async function POST(req: NextRequest) {
         voice: {
           provider: ttsProvider,
           voiceId,
-          model: CARTESIA_TTS_MODEL,
+          model: VOICE_STACK.TTS.MODEL,
           speed: 1.0,
         },
         intelligence: {
@@ -164,9 +159,9 @@ export async function POST(req: NextRequest) {
         },
         speech: {
           sttProvider,
-          sttModel: "ink-whisper",
+          sttModel: VOICE_STACK.STT.MODEL,
           ttsProvider,
-          ttsModel: CARTESIA_TTS_MODEL,
+          ttsModel: VOICE_STACK.TTS.MODEL,
         },
         telephony: {
           provider: "plivo",
