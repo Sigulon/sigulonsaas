@@ -28,12 +28,10 @@ OUTBOUND (campaign / single-dial):
    Room name maps 1:1 to the session key (`sigulon:call:{room}:config`).
 2. Concurrency gate (`acquire_concurrency_slot`, plan limit, fail-closed).
 3. Billing reserve ping (best-effort; zero-balance per `on_no_balance`).
-4. `AgentSession` (allow-listed models only — anything else fails fast):
-   - STT: `inference.STT("deepgram/nova-3", language)` (Hinglish → `"multi"`);
-     AssemblyAI fallback ONLY on provider error (never dual-run)
-   - LLM: `inference.LLM("google/gemma-4-31b-it")` (max ~2 sentences);
-     OpenRouter `google/gemini-2.5-flash` fallback ONLY on error
-   - TTS: `cartesia.TTS(model="sonic-3", voice=config.voice_id)` —
+4. `AgentSession` (target voice stack):
+   - STT: `inference.STT("deepgram/nova-3", language)` via LiveKit Inference
+   - LLM: `inference.LLM("google/gemini-2.5-flash")` via LiveKit Inference
+   - TTS: `cartesia.TTS(model="sonic-3.6", voice=config.voice_id)` via direct Cartesia plugin —
      voice UUID ALWAYS explicit from config (never default)
    - VAD: `silero.VAD.load()`; turn detection: `MultilingualModel`
    - `allow_interruptions=True`; latency/observability hooks attached
@@ -46,11 +44,11 @@ OUTBOUND (campaign / single-dial):
 
 ## Providers (`providers/`)
 
-Descriptors, never vendor SDKs in `agent.py` — a new model is one branch.
-STT: Deepgram `nova-3` via Inference gateway (`language.py` maps
-en/hi/hinglish/ta/te/…). LLM: Gemma 4 31B via Inference, OpenRouter
-fallback. TTS: Cartesia Sonic 3 (speed clamped 0.6–1.5). Retries:
-`providers/errors.py` (transient/permanent + backoff; Cancelled never masked).
+Descriptors, never vendor SDKs in `agent.py`.
+- STT: Deepgram `nova-3` via LiveKit Inference gateway (`language.py` maps en/hi/hinglish/ta/te/…).
+- LLM: Google Gemini 2.5 Flash (`google/gemini-2.5-flash`) via LiveKit Inference gateway.
+- TTS: Cartesia Sonic 3.6 (`sonic-3.6`) via direct Cartesia plugin (speed clamped 0.6–1.5).
+- Retries: `providers/errors.py` (transient/permanent + backoff; Cancelled never masked).
 
 ## Recordings
 
@@ -61,8 +59,7 @@ from the `egress_ended` webhook (`Call.recording_url`).
 ## Env
 
 See `voice-runtime/.env.example`: `LIVEKIT_URL/API_KEY/API_SECRET/`
-`WEBHOOK_SECRET/AGENT_NAME`, `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`,
-`OPENROUTER_API_KEY` (fallback), `GCS_RECORDINGS_BUCKET`, Mongo/Redis,
+`WEBHOOK_SECRET/AGENT_NAME`, `CARTESIA_API_KEY`, `GCS_RECORDINGS_BUCKET`, Mongo/Redis,
 `INTERNAL_API_*`. Validate with `require_livekit_env()`.
 
 ## Tests

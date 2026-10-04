@@ -48,10 +48,6 @@ spec:
               valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: LIVEKIT_API_SECRET } }
             - name: CARTESIA_API_KEY
               valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: CARTESIA_API_KEY } }
-            - name: DEEPGRAM_API_KEY
-              valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: DEEPGRAM_API_KEY } }
-            - name: OPENROUTER_API_KEY
-              valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: OPENROUTER_API_KEY } }
             - name: MONGODB_URI
               valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: MONGODB_URI } }
             - name: REDIS_URL

@@ -78,7 +78,6 @@ $requiredSecretNames = @(
   "sigulon-plivo-auth-token",
   "sigulon-cartesia-api-key",
   "sigulon-cartesia-webhook-secret",
-  "sigulon-openrouter-api-key",
   "sigulon-smtp-host",
   "sigulon-smtp-user",
   "sigulon-smtp-password",

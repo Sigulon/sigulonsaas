@@ -46,8 +46,6 @@ spec:
               valueFrom: { secretKeyRef: { name: sigulon-cartesia-api-key, key: latest } }
             - name: CARTESIA_WEBHOOK_SECRET
               valueFrom: { secretKeyRef: { name: sigulon-cartesia-webhook-secret, key: latest } }
-            - name: OPENROUTER_API_KEY
-              valueFrom: { secretKeyRef: { name: sigulon-openrouter-api-key, key: latest } }
             - name: SMTP_HOST
               valueFrom: { secretKeyRef: { name: sigulon-smtp-host, key: latest } }
             - name: SMTP_USER
