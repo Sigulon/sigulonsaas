@@ -17,17 +17,13 @@ import {
   RecordingModel,
   CallOutcomeModel,
   AppointmentModel,
-  ToolModel,
-  ToolConfigModel,
   BillingAccountModel,
   CreditLedgerModel,
   UsageRecordModel,
   ProviderAccountModel,
   WebhookEventModel,
-  ApiKeyModel,
   TeamInviteModel,
   AuditLogModel,
-  NotificationModel,
 } from "../models";
 
 export async function ensureAllIndexes(): Promise<void> {
@@ -51,17 +47,13 @@ export async function ensureAllIndexes(): Promise<void> {
     RecordingModel,
     CallOutcomeModel,
     AppointmentModel,
-    ToolModel,
-    ToolConfigModel,
     BillingAccountModel,
     CreditLedgerModel,
     UsageRecordModel,
     ProviderAccountModel,
     WebhookEventModel,
-    ApiKeyModel,
     TeamInviteModel,
     AuditLogModel,
-    NotificationModel,
   ];
 
   for (const model of models) {

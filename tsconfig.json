@@ -22,8 +22,7 @@
       "@/*": ["./src/*"],
       "@sigulon/shared-types": ["./packages/shared-types/index.ts"],
       "@sigulon/agent-schema": ["./packages/agent-schema/index.ts"],
-      "@sigulon/database": ["./packages/database/index.ts"],
-      "@sigulon/billing": ["./packages/billing/index.ts"]
+      "@sigulon/database": ["./packages/database/index.ts"]
     }
   },
   "include": [
