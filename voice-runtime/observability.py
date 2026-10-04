@@ -161,22 +161,15 @@ async def check_readiness() -> dict[str, Any]:
     livekit_ok = bool(os.getenv("LIVEKIT_URL")) and bool(os.getenv("LIVEKIT_API_KEY")) and bool(
         os.getenv("LIVEKIT_API_SECRET")
     )
-    deepgram_ok = bool(os.getenv("DEEPGRAM_API_KEY")) or livekit_ok
     cartesia_ok = bool(os.getenv("CARTESIA_API_KEY"))
-    openrouter_ok = bool(os.getenv("OPENROUTER_API_KEY"))
     checks["livekit"] = {"ok": livekit_ok}
     if not livekit_ok:
         checks["livekit"]["error"] = "LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET not configured"
-    checks["deepgram_stt"] = {"ok": deepgram_ok}
-    checks["cartesia_tts"] = {"ok": cartesia_ok}
+    checks["livekit_inference_stt"] = {"ok": livekit_ok, "model": "deepgram/nova-3"}
+    checks["livekit_inference_llm"] = {"ok": livekit_ok, "model": "google/gemini-2.5-flash"}
+    checks["cartesia_tts"] = {"ok": cartesia_ok, "model": "sonic-3.6"}
     if not cartesia_ok:
         checks["cartesia_tts"]["error"] = "CARTESIA_API_KEY not configured"
-    checks["openrouter"] = {
-        "ok": openrouter_ok,
-        "model": (os.getenv("OPENROUTER_MODEL", "") or "").strip() or "fallback: livekit-inference",
-    }
-    if not openrouter_ok:
-        checks["openrouter"]["error"] = "OPENROUTER_API_KEY not configured (fallback LLM only)"
 
     overall_ok = bool(
         checks["redis"]["ok"]

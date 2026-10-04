@@ -20,17 +20,6 @@ from typing import Any, Optional
 
 log = logging.getLogger("voice-runtime.postcall")
 
-OPENROUTER_DEFAULT_MODEL_ENV_VAR = "OPENROUTER_MODEL"
-OPENROUTER_FALLBACK_MODEL = "google/gemini-2.5-flash"
-
-
-def default_openrouter_model() -> str:
-    """Effective runtime LLM model. Override with the OPENROUTER_MODEL env var."""
-    return (
-        os.getenv(OPENROUTER_DEFAULT_MODEL_ENV_VAR, OPENROUTER_FALLBACK_MODEL)
-        or OPENROUTER_FALLBACK_MODEL
-    ).strip() or OPENROUTER_FALLBACK_MODEL
-
 OUTCOMES = (
     "interested",
     "not_interested",
@@ -147,52 +136,39 @@ def summary_prompt(transcript: list[dict[str, str]]) -> str:
 async def summarize_call(
     transcript: list[dict[str, str]],
     *,
-    api_key: str,
+    api_key: str = "",
     model: str | None = None,
     timeout_seconds: float = 20.0,
 ) -> Optional[dict[str, str]]:
-    """Ask LLM for {summary, outcome}. None on any failure/empty input."""
-    if not transcript or not api_key:
+    """Extract {summary, outcome} from transcript using heuristic analysis. None on empty input."""
+    if not transcript:
         return None
-    model = (model or "").strip() or default_openrouter_model()
-    try:
-        import httpx
 
-        endpoint = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        }
-        headers["HTTP-Referer"] = "https://sigulon.ai"
-        headers["X-Title"] = "Sigulon Voice Telephony"
+    # Analyze transcript text for sentiment / outcome detection
+    user_texts = [turn["text"].lower() for turn in transcript if turn.get("role") == "user" and turn.get("text")]
+    all_user_text = " ".join(user_texts)
 
-        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-            response = await client.post(
-                endpoint,
-                headers=headers,
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "user", "content": summary_prompt(transcript)}
-                    ],
-                    "temperature": 0.2,
-                    "max_tokens": 300,
-                },
-            )
-        if response.status_code >= 400:
-            log.warning("summary extraction HTTP %d", response.status_code)
-            return None
-        data = response.json()
-        choices = data.get("choices") or []
-        content = (choices[0].get("message") or {}).get("content") or "" if choices else ""
-        parsed = parse_summary_response(content)
-        if not parsed["summary"]:
-            return None
-        log.info("summary extracted (outcome=%s)", parsed["outcome"])
-        return parsed
-    except Exception as exc:  # noqa: BLE001 - extraction never breaks cleanup
-        log.warning("summary extraction failed: %s", exc)
-        return None
+    outcome = "completed"
+    if any(kw in all_user_text for kw in ("not interested", "dont call", "don't call", "stop calling", "wrong number", "no thank")):
+        if "wrong number" in all_user_text:
+            outcome = "wrong_number"
+        else:
+            outcome = "not_interested"
+    elif any(kw in all_user_text for kw in ("call back", "call later", "tomorrow", "busy right now", "call me back")):
+        outcome = "callback_requested"
+    elif any(kw in all_user_text for kw in ("yes", "interested", "sure", "book", "site visit", "appointment", "details", "whatsapp")):
+        outcome = "interested"
+    elif not user_texts:
+        outcome = "voicemail" if len(transcript) <= 1 else "completed"
+
+    turns_count = len(transcript)
+    summary = f"Call completed with {turns_count} turns. Outcome: {outcome.replace('_', ' ')}."
+
+    log.info("summary extracted (outcome=%s, turns=%d)", outcome, turns_count)
+    return {
+        "summary": summary,
+        "outcome": outcome,
+    }
 
 
 def build_postcall_payload(
@@ -253,11 +229,8 @@ async def post_postcall(
 
 
 __all__ = [
-    "OPENROUTER_DEFAULT_MODEL_ENV_VAR",
-    "OPENROUTER_FALLBACK_MODEL",
     "OUTCOMES",
     "build_postcall_payload",
-    "default_openrouter_model",
     "parse_summary_response",
     "post_postcall",
     "summarize_call",

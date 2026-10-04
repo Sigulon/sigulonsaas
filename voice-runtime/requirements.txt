@@ -1,4 +1,4 @@
-# Sigulon voice runtime — LiveKit Agents 1.x + LiveKit Inference + Cartesia + OpenRouter.
+# Sigulon voice runtime — LiveKit Agents 1.x + LiveKit Inference + Cartesia Direct.
 # Media never touches our servers — LiveKit Cloud carries it; the worker only
 # sees frames via the Agents SDK.
 # Install with:
@@ -12,8 +12,6 @@ livekit-api>=1.0.0
 livekit-plugins-silero>=0.0.1
 livekit-plugins-turn-detector>=0.0.1
 livekit-plugins-cartesia>=0.0.1
-livekit-plugins-deepgram>=0.0.1
-livekit-plugins-openai>=0.0.1
 
 # Session/config store + persistence
 redis==8.1.0
