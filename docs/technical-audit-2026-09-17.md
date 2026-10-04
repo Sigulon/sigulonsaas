@@ -11,7 +11,7 @@ end-to-end latency values below are not presented as live measurements.
 
 The verified provider contract is:
 
-- LLM: OpenRouter `google/gemini-2.5-flash`
+- LLM: LiveKit Inference `google/gemini-2.5-flash`
 - STT: Cartesia `ink-whisper` for Telugu/Hindi/Tamil and `ink-2` for English
 - TTS: Cartesia Sonic 3
 - Telephony: Plivo bidirectional 8 kHz µ-law media stream
@@ -30,7 +30,7 @@ Browser
   -> signed WSS media URL
   -> FastAPI voice runtime
   -> legacy-rtc: Plivo transport -> VAD -> Cartesia STT
-             -> OpenRouter Gemini -> Cartesia TTS -> Plivo transport
+             -> Gemini -> Cartesia TTS -> Plivo transport
   -> caller
 
 Redis: call-config cache, live-session/heartbeat data, runtime concurrency,
@@ -89,7 +89,7 @@ allowing unbounded calls.
 
 The runtime logs these real-time stages as `[voice-latency]`: agent-config
 lookup, session creation, credit reservation, pipeline start, STT final,
-OpenRouter first token, Cartesia first audio, and serialized Plivo audio.
+LLM first token, Cartesia first audio, and serialized Plivo audio.
 No post-change call exists yet from which to report measured STT latency, LLM
 TTFT, TTS TTFB, or caller-heard first-audio latency.
 
@@ -134,21 +134,21 @@ run with Next.js `after()`, while MongoDB remains the config fallback.
 ### Medium-priority work
 
 - legacy-rtc emits a deprecation warning for `AudioContextTTSService`; schedule
-  a compatibility upgrade before legacy-rtc 2.0.
+   a compatibility upgrade before legacy-rtc 2.0.
 - Recording has two sources: legacy-rtc creates a dual-track WAV and uploads it
-  to GCS; Plivo also posts its provider recording URL. Both are recorded in
-  MongoDB. Consolidate on one canonical playback source and serve private
-  recordings through an authenticated signed/proxy URL. The generic storage
-  helper cannot create a real GCS signature itself and Plivo URLs may require
-  provider authentication.
+   to GCS; Plivo also posts its provider recording URL. Both are recorded in
+   MongoDB. Consolidate on one canonical playback source and serve private
+   recordings through an authenticated signed/proxy URL. The generic storage
+   helper cannot create a real GCS signature itself and Plivo URLs may require
+   provider authentication.
 - The campaign worker's `table()` code is an in-memory test adapter only;
-  deployed clients use PyMongo. It contains no Supabase package, environment
-  variable, or runtime fallback, but it should be renamed/replaced with a
-  Mongo-shaped test double to make that boundary less confusing.
+   deployed clients use PyMongo. It contains no Supabase package, environment
+   variable, or runtime fallback, but it should be renamed/replaced with a
+   Mongo-shaped test double to make that boundary less confusing.
 - Campaign dial governors are TTL-based admission counters. Runtime Redis
-  slots enforce the hard per-organization active-call ceiling; if per-campaign
-  active-call limits must be exact, persist/release a campaign slot on the
-  signed terminal callback rather than relying on a short dial TTL.
+   slots enforce the hard per-organization active-call ceiling; if per-campaign
+   active-call limits must be exact, persist/release a campaign slot on the
+   signed terminal callback rather than relying on a short dial TTL.
 
 ## Database and tenant isolation
 

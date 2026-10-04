@@ -20,6 +20,7 @@ export const VOICE_STACK = {
   TTS: {
     PROVIDER: "cartesia" as const,
     MODEL: "sonic-3.6" as const,
+    DEFAULT_VOICE_ID: "126a0835-beea-4e77-a883-f66eabcf6dd4" as const,
     SPEED_MIN: 0.6,
     SPEED_MAX: 1.5,
   },

@@ -1,9 +1,16 @@
 # Sigulon — AI voice-calling SaaS for Indian SMBs
 
 Agents that answer and dial over real phone lines: LiveKit Cloud voice path
-(Plivo SIP trunks · Deepgram nova-3 STT · Gemma 4 31B LLM · Cartesia Sonic 3 TTS)
+(Plivo SIP trunks · LiveKit Inference STT [Deepgram Nova-3] · LiveKit Inference LLM [Google Gemini 2.5 Flash] · Direct Cartesia Plugin TTS [Sonic 3.6])
 via the `sigulon-voice-agent` worker, async campaign dialing, credit-ledger
 billing, and a multi-tenant Next.js dashboard.
+
+## Target Consolidated Voice Stack
+
+Sigulon runs on exactly three consolidated providers:
+- **LLM**: Google Gemini 2.5 Flash via LiveKit Inference (`google/gemini-2.5-flash`). Handled via LiveKit Cloud credentials (`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`); no third-party LLM key required.
+- **STT**: Deepgram Nova-3 via LiveKit Inference (`deepgram/nova-3`). Handled via LiveKit Cloud gateway; no third-party STT key required.
+- **TTS**: Cartesia Sonic 3.6 direct (`sonic-3.6`) via the official Cartesia plugin using `CARTESIA_API_KEY`.
 
 ## Quickstart
 

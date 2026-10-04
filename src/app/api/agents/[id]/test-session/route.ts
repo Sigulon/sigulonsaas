@@ -237,7 +237,6 @@ export async function POST(
           replyText = `I understand completely. Regarding ${offerings}, our team will ensure you get the best outcome. What time works best for you?`;
         }
       }
-    }
 
     // 4. Synthesize voice with Cartesia Sonic-3
     const audioBuffer = await cartesia.generateSpeech({

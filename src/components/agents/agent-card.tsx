@@ -208,17 +208,13 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
             </Button>
           </div>
 
-          <Button
-            asChild
-            size="sm"
-            variant="ghost"
-            className="w-full text-xs text-slate-500 hover:text-slate-900 flex items-center justify-center gap-1"
+          <Link
+            href={`/agents/${agent.id}/edit`}
+            className="w-full text-xs text-slate-500 hover:text-slate-900 flex items-center justify-center gap-1 h-8 px-3 rounded-md hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
           >
-            <Link href={`/agents/${agent.id}/edit`}>
-              <Edit className="h-3 w-3" />
-              Configure Agent Settings
-            </Link>
-          </Button>
+            <Edit className="h-3 w-3" />
+            Configure Agent Settings
+          </Link>
         </CardFooter>
       </Card>
 
