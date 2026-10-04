@@ -14,7 +14,7 @@
     "test:unit": "vitest run",
     "db:init": "vite-node scripts/create-tables.ts",
     "db:seed": "vite-node scripts/seed-mongodb.ts",
-    "db:migrate:gemini-2-5-flash": "vite-node scripts/migrate-openrouter-gemini-25-flash.ts",
+    "db:migrate:voice-stack": "vite-node scripts/migrate-to-consolidated-voice-stack.ts",
     "tunnels": "powershell -ExecutionPolicy Bypass -File scripts/start-tunnels.ps1"
   },
   "dependencies": {

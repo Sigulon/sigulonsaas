@@ -180,19 +180,19 @@ async function main() {
         voice: {
           provider: "cartesia",
           voiceId: "126a0835-beea-4e77-a883-f66eabcf6dd4",
-          model: "sonic-3",
+          model: "sonic-3.6",
           speed: 1.0,
         },
         intelligence: {
-          provider: "openrouter",
+          provider: "livekit-inference",
           model: "google/gemini-2.5-flash",
           temperature: 0.7,
         },
         speech: {
-          sttProvider: "cartesia",
-          sttModel: "ink-whisper",
+          sttProvider: "livekit-inference",
+          sttModel: "deepgram/nova-3",
           ttsProvider: "cartesia",
-          ttsModel: "sonic-3",
+          ttsModel: "sonic-3.6",
         },
         telephony: {
           provider: "plivo",
