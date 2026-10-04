@@ -1,8 +1,9 @@
 """Shared MongoDB helpers for org-scoped voice tools.
 
-Every tool receives the call context from Pipecat and uses its tenant id to
-scope reads and writes. The web control plane, runtime, and worker all use
-the same MongoDB collections; there is deliberately no secondary database fallback.
+Every tool receives the call context from the LiveKit session userdata and
+uses its tenant id to scope reads and writes. The web control plane,
+runtime, and worker all use the same MongoDB collections; there is
+deliberately no secondary database fallback.
 """
 
 from __future__ import annotations
@@ -54,12 +55,38 @@ async def run_db(fn, *args, **kwargs) -> Any:
 
 
 def ctx_ids(params: Any) -> tuple[str, str, str]:
-    """Return ``(call_id, tenant_id, agent_id)`` from Pipecat resources."""
+    """Return ``(call_id, tenant_id, agent_id)`` from session userdata.
+
+    Accepts a LiveKit ``RunContext`` (``context.userdata`` dict), a legacy
+    object with ``app_resources``, or a plain ``{call_id, tenant_id,
+    agent_id}`` mapping — so tool unit tests keep working.
+    """
+    # LiveKit RunContext: userdata dict set in agent.py.
+    userdata = getattr(params, "userdata", None)
+    if isinstance(userdata, dict):
+        return (
+            str(userdata.get("call_id", "") or ""),
+            str(userdata.get("tenant_id", "") or ""),
+            str(userdata.get("agent_id", "") or ""),
+        )
+    if isinstance(params, dict):
+        return (
+            str(params.get("call_id", "") or ""),
+            str(params.get("tenant_id", "") or ""),
+            str(params.get("agent_id", "") or ""),
+        )
     resources = getattr(params, "app_resources", None)
-    call_id = str(getattr(resources, "call_id", "") or "")
-    tenant_id = str(getattr(resources, "tenant_id", "") or "")
-    agent_id = str(getattr(resources, "agent_id", "") or "")
-    return call_id, tenant_id, agent_id
+    if resources is not None:
+        call_id = str(getattr(resources, "call_id", "") or "")
+        tenant_id = str(getattr(resources, "tenant_id", "") or "")
+        agent_id = str(getattr(resources, "agent_id", "") or "")
+        return call_id, tenant_id, agent_id
+    # Fallback: attributes directly on the object.
+    return (
+        str(getattr(params, "call_id", "") or ""),
+        str(getattr(params, "tenant_id", "") or ""),
+        str(getattr(params, "agent_id", "") or ""),
+    )
 
 
 async def load_agent(tenant_id: str, agent_id: str) -> Optional[dict[str, Any]]:

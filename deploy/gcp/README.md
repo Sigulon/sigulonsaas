@@ -3,27 +3,34 @@
 This is the supported Google Cloud topology for Sigulon:
 
 ```text
-                          Cloud Run
-            ┌───────────────────────────────────┐
-  HTTPS ───▶│ sigulon-web                         │
-            │ sigulon-voice-runtime (WebSockets) │◀── Plivo audio stream
-            └───────────────┬───────────────────┘
-                            │ Direct VPC egress
-                    MongoDB + Memorystore Redis
-                            │
-                      GKE Autopilot
-                            │
-                    KEDA ScaledObject
-                            │
-                  campaign-worker replicas
+                           Cloud Run
+             ┌───────────────────────────────────┐
+   HTTPS ───▶│ sigulon-web (control plane +      │
+             │  /api/webhooks/livekit)           │
+             └───────────────┬───────────────────┘
+                             │ Direct VPC egress
+                     MongoDB + Memorystore Redis
+                             │
+                       GKE Autopilot
+                             │
+                 ┌───────────┴───────────┐
+                 │                       │
+          KEDA (CPU)              KEDA (Redis queue)
+                 │                       │
+        voice-worker replicas    campaign-worker replicas
+        (sigulon-voice-agent)     (LiveKit dispatch+SIP dial)
+
+   Telephone: Plivo number → Zentrunk (SIP) → LiveKit Cloud
+              inbound trunk → room + dispatch → voice worker
+              Outbound: room + dispatch + SIP participant → Plivo → callee
 ```
 
-Cloud Run automatically scales the web application from HTTP traffic and the
-voice runtime from active WebSocket requests. The runtime has a concurrency of
-one call per container to preserve real-time audio latency. KEDA watches the
-Redis list `sigulon:campaign:queue` every five seconds and adjusts the GKE
-campaign-worker replica count from **1 to 20**. GKE Autopilot provisions the
-underlying nodes for pending worker Pods.
+Cloud Run scales the web application from HTTP traffic. Both workers run on
+GKE: the voice worker (`python agent.py start`, outbound-only, no ingress)
+scales on CPU via KEDA (proxy for LiveKit concurrent dispatch, min 1 so
+inbound SIP dispatch never cold-starts); the campaign worker scales from the
+Redis list `sigulon:campaign:queue` (1 to 20). GKE Autopilot provisions nodes
+for pending worker Pods.
 
 One worker stays alive even without a campaign because the current worker also
 performs retry and stale-job recovery sweeps. This is intentional; setting its
@@ -62,11 +69,15 @@ secret names, never secret data.
 | `sigulon-redis-url` | `REDIS_URL` |
 | `sigulon-internal-api-secret` | `INTERNAL_API_SECRET` |
 | `sigulon-encryption-secret` | `ENCRYPTION_SECRET` |
-| `sigulon-plivo-auth-id` | `PLIVO_AUTH_ID` |
-| `sigulon-plivo-auth-token` | `PLIVO_AUTH_TOKEN` |
+| `sigulon-livekit-url` | `LIVEKIT_URL` |
+| `sigulon-livekit-api-key` | `LIVEKIT_API_KEY` |
+| `sigulon-livekit-api-secret` | `LIVEKIT_API_SECRET` |
+| `sigulon-livekit-webhook-secret` | `LIVEKIT_WEBHOOK_SECRET` |
+| `sigulon-plivo-auth-id` | `PLIVO_AUTH_ID` (SIP trunking + dual-run only) |
+| `sigulon-plivo-auth-token` | `PLIVO_AUTH_TOKEN` (SIP trunking + dual-run only) |
 | `sigulon-cartesia-api-key` | `CARTESIA_API_KEY` |
-| `sigulon-cartesia-webhook-secret` | `CARTESIA_WEBHOOK_SECRET` |
-| `sigulon-openrouter-api-key` | `OPENROUTER_API_KEY` |
+| `sigulon-deepgram-api-key` | `DEEPGRAM_API_KEY` |
+| `sigulon-openrouter-api-key` | `OPENROUTER_API_KEY` (fallback LLM) |
 | `sigulon-smtp-host` | `SMTP_HOST` |
 | `sigulon-smtp-user` | `SMTP_USER` |
 | `sigulon-smtp-password` | `SMTP_PASSWORD` |
@@ -93,11 +104,12 @@ whenever you rotate a value. `KEDA_REDIS_ADDRESS` is only `host:port`; it must
 not include `redis://`. If your Redis deployment does not use a password, set
 the `KEDA_REDIS_PASSWORD` value to an empty string.
 
-> Legacy manifests `deploy/cloudrun-*.yaml.legacy` are superseded and must not
-> be applied. The canonical manifests are `deploy/gcp/cloudrun-*.yaml` (Cloud
-> Run web + voice plane) and `deploy/gcp/worker/` (GKE + KEDA worker). The
-> worker must never be deployed as a Cloud Run Service: it is a non-HTTP,
-> long-running `BRPOP` consumer.
+> Legacy manifests `deploy/cloudrun-*.yaml.legacy*` are superseded and must not
+> be applied. The canonical manifests are `deploy/gcp/cloudrun-web.yaml`
+> (Cloud Run web) and `deploy/gcp/voice-worker/` + `deploy/gcp/worker/`
+> (GKE + KEDA workers). Neither worker may be deployed as a Cloud Run
+> Service: they are non-HTTP, long-running processes (Agents SDK
+> registration / Redis `BRPOP`).
 
 ## Deploy
 
@@ -122,23 +134,26 @@ $subnet = "YOUR_REGIONAL_SUBNET"
 
 The script enables required APIs, creates an Artifact Registry repository and
 dedicated Cloud Run service account when missing, builds all three images with
-Cloud Build, deploys both Cloud Run services, installs KEDA 2.20, and applies
-the worker deployment, PodDisruptionBudget, and ScaledObject. Use `-SkipBuild`
-to reuse a previously pushed tag, or `-SkipWorker` to deploy just the web and
-voice plane. Omit `-WorkerSecretFile` only if `sigulon-worker-secrets` is
+Cloud Build, deploys the web Cloud Run service, installs KEDA 2.20, and applies
+both worker deployments, PodDisruptionBudget, and ScaledObjects. Use `-SkipBuild`
+to reuse a previously pushed tag, or `-SkipWorker` to deploy just the web.
+Omit `-WorkerSecretFile` only if `sigulon-worker-secrets` is
 already present in the `sigulon` namespace.
 
-The script prints the generated HTTPS URLs. Configure the Plivo number with:
+The script prints the web HTTPS URL. Point each Plivo number's Zentrunk SIP
+URI at your LiveKit project domain (see `src/lib/livekit.ts`
+`zentrunkUriForProject()`):
 
 ```text
-Answer URL: https://<sigulon-web>/api/webhooks/plivo/inbound
-Hangup URL: https://<sigulon-web>/api/webhooks/plivo/status
+SIP URI: <project-sip-subdomain>.sip.livekit.cloud;transport=tcp
+LiveKit webhook: https://<sigulon-web>/api/webhooks/livekit
 ```
 
-It makes the web and voice endpoints public because browsers and Plivo must
-reach them. Dashboard APIs remain protected by the application session, Plivo
-webhooks are signature-verified, and the voice runtime rejects call IDs that
-do not resolve to an active agent.
+It makes the web endpoint public because browsers and LiveKit must reach it.
+Dashboard APIs remain protected by the application session, LiveKit webhooks
+are signature-verified (`LIVEKIT_WEBHOOK_SECRET`) with `WebhookEvent`
+idempotency, and the voice worker only serves rooms whose dispatch metadata
+resolves to an active agent.
 
 ## Verify autoscaling
 
@@ -150,16 +165,19 @@ kubectl get scaledobject,hpa -n sigulon
 kubectl get deployment,pods -n sigulon -w
 ```
 
-KEDA calculates the desired worker count from an average of two queued jobs per
+KEDA calculates the desired campaign-worker count from an average of two queued jobs per
 replica. The deployment grows by at most four Pods every 15 seconds and waits
 five minutes before a conservative scale-down. The existing Redis governors
-still cap real Plivo dial attempts globally, per organization, per campaign,
+still cap real SIP dial attempts globally, per organization, per campaign,
 and per caller number, so adding workers never bypasses telephony limits.
+The voice worker scales on CPU (60% utilization ≈ concurrent sessions);
+one replica always stays alive for inbound dispatch.
 
 Tune `listLength`, `maxReplicaCount`, and `WORKER_*_MAX_CONCURRENT` only after
-running [`docs/load-test-plan.md`](../../docs/load-test-plan.md). Raise Cloud
-Run's maximum scale and the tenant-level `maxConcurrentCalls` in tandem with
-provider quotas and measured CPU per call.
+running [`docs/load-test-plan.md`](../../docs/load-test-plan.md). Raise the
+tenant-level `maxConcurrentCalls` in tandem with trunk quotas and measured
+CPU per session. Soak 48h on staging, then cut prod numbers (US first, India
+after region-pin verification).
 
 ## Networking and operations
 
@@ -168,7 +186,8 @@ provider quotas and measured CPU per call.
 - If MongoDB Atlas requires IP allow-listing, use Cloud NAT with an egress rule
   and change Cloud Run to `all-traffic`, or use Atlas private connectivity.
 - Set Cloud Monitoring alerts for Redis queue depth, KEDA/HPA desired versus
-  current replicas, worker heartbeat freshness, runtime active-call rejections,
-  Plivo callback failures, and MongoDB connection saturation.
-- Test both the inbound and outbound Plivo paths before allowing production
-  campaigns. Do not run the database seed scripts against production.
+  current replicas, worker heartbeat freshness, dispatch failures,
+  LiveKit webhook failures, and MongoDB connection saturation.
+- Test both the inbound (Plivo → LiveKit trunk → dispatch → greet <1s) and
+  outbound (dispatch → SIP participant, callee speaks first) paths before
+  allowing production campaigns. Do not run the database seed scripts against production.

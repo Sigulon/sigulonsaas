@@ -1,9 +1,10 @@
 """Post-call intelligence: transcript capture + summary/outcome extraction.
 
-The pipeline's ``LLMContext`` accumulates every turn. When the call ends,
-``main.py`` snapshots it here (plain ``agent``/``user`` turns), optionally
-asks LLM for a structured recap, and hands both to ``finalize_call`` —
-so the dashboard shows real transcripts and dispositions instead of stubs.
+The LiveKit AgentSession emits transcript events during the call. When the
+session ends, agent.py snapshots them here (plain ``agent``/``user`` turns),
+optionally asks LLM for a structured recap, and POSTs both to the control
+API — so the dashboard shows real transcripts and dispositions, and the
+control plane sends WhatsApp/email to the owner.
 
 Everything is best-effort: extraction failures are swallowed upstream and
 the transcript still persists. No extraction = no summary, never a lost call.
@@ -61,29 +62,51 @@ Transcript:
 
 
 def transcript_from_context(context: Any) -> list[dict[str, str]]:
-    """Flatten an ``LLMContext`` into ``[{role, text}]`` (agent/user only)."""
+    """Flatten a conversation into ``[{role, text}]`` (agent/user only).
+
+    Accepts: a legacy ``LLMContext`` (``get_messages()``), a LiveKit session
+    (``chat_ctx`` / ``history``), or a plain list of ``{role, text}`` /
+    transcript-event dicts. Never raises.
+    """
     turns: list[dict[str, str]] = []
     try:
-        messages = context.get_messages() if context is not None else []
+        if isinstance(context, list):
+            messages = context
+        elif context is None:
+            return turns
+        elif hasattr(context, "get_messages"):
+            messages = context.get_messages() or []
+        else:
+            chat_ctx = getattr(context, "chat_ctx", None) or getattr(context, "history", None)
+            messages = chat_ctx.get_messages() if hasattr(chat_ctx, "get_messages") else (chat_ctx or [])
     except Exception:  # noqa: BLE001 - snapshot must never raise
         return turns
     for message in messages or []:
-        role = getattr(message, "role", "")
-        content = getattr(message, "content", "")
-        if isinstance(content, list):  # multimodal parts — keep text parts
-            content = " ".join(
-                str(part.get("text", "")) if isinstance(part, dict) else str(part)
-                for part in content
-            )
-        text = str(content or "").strip()
+        if isinstance(message, dict):
+            role = str(message.get("role", "") or "")
+            text = str(message.get("text", message.get("content", "")) or "").strip()
+        else:
+            role = getattr(message, "role", "")
+            content = getattr(message, "content", "")
+            if isinstance(content, list):  # multimodal parts — keep text parts
+                content = " ".join(
+                    str(part.get("text", "")) if isinstance(part, dict) else str(part)
+                    for part in content
+                )
+            text = str(content or "").strip()
         if not text:
             continue
-        if role == "assistant":
+        if role in ("assistant", "agent"):
             turns.append({"role": "agent", "text": text})
         elif role == "user":
             turns.append({"role": "user", "text": text})
         # system instructions are config, not conversation — skip
     return turns
+
+
+def transcript_from_events(events: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Build ``[{role, text}]`` from collected AgentSession transcript events."""
+    return transcript_from_context(events)
 
 
 def parse_summary_response(raw: str) -> dict[str, str]:
@@ -172,13 +195,73 @@ async def summarize_call(
         return None
 
 
+def build_postcall_payload(
+    *,
+    call_id: str,
+    transcript: list[dict[str, str]],
+    summary: dict[str, str] | None,
+    duration_seconds: float = 0,
+    room_name: str = "",
+    captured_variables: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the control-plane postcall body (transcript + summary + outcome + captured variables)."""
+    return {
+        "call_id": call_id,
+        "room_name": room_name or call_id,
+        "transcript": transcript,
+        "summary": (summary or {}).get("summary", ""),
+        "outcome": (summary or {}).get("outcome", "completed"),
+        "duration_seconds": duration_seconds,
+        "captured_variables": captured_variables or {},
+    }
+
+
+async def post_postcall(
+    payload: dict[str, Any],
+    *,
+    web_base: str | None = None,
+    secret: str | None = None,
+    timeout_seconds: float = 10.0,
+) -> bool:
+    """POST transcript+summary to the control API (owner notify fan-out).
+
+    Endpoint: POST {INTERNAL_API_BASE_URL}/api/internal/calls/postcall.
+    Best-effort: returns False on any failure, never raises.
+    """
+    import os as _os
+
+    base = (web_base if web_base is not None else _os.getenv("INTERNAL_API_BASE_URL", "")).rstrip("/")
+    token = secret if secret is not None else _os.getenv("INTERNAL_API_SECRET", "")
+    if not base or not token:
+        return False
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            response = await client.post(
+                f"{base}/api/internal/calls/postcall",
+                headers={"Authorization": f"Bearer {token}"},
+                json=payload,
+            )
+        if response.status_code >= 400:
+            log.warning("postcall POST failed: HTTP %d", response.status_code)
+            return False
+        return True
+    except Exception as exc:  # noqa: BLE001 - postcall never breaks cleanup
+        log.warning("postcall POST failed: %s", exc)
+        return False
+
+
 __all__ = [
     "OPENROUTER_DEFAULT_MODEL_ENV_VAR",
     "OPENROUTER_FALLBACK_MODEL",
     "OUTCOMES",
+    "build_postcall_payload",
     "default_openrouter_model",
     "parse_summary_response",
+    "post_postcall",
     "summarize_call",
     "summary_prompt",
     "transcript_from_context",
+    "transcript_from_events",
 ]

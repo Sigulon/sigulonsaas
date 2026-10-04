@@ -1,88 +1,80 @@
-"""Cartesia STT provider factory.
+"""STT descriptor: LiveKit Inference `deepgram/nova-3` (AssemblyAI fallback).
 
-Pipeline audio is 16 kHz signed PCM. Stored Sigulon bundle languages are
-resolved to Cartesia's API values before this module constructs Pipecat's
-WebSocket service.
+Never dual-run: primary is always deepgram/nova-3 via the Inference gateway;
+AssemblyAI is constructed only after a provider error on the primary path
+(see agent.py fallback).
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 log = logging.getLogger("voice-runtime.providers.stt")
 
-SUPPORTED_STT_PROVIDERS = ("cartesia",)
+SUPPORTED_STT_PROVIDERS = ("deepgram", "assemblyai")
+PRIMARY_STT_MODEL = "deepgram/nova-3"
+FALLBACK_STT_MODEL = "assemblyai/universal-streaming"
 
 
 def default_stt_model(provider: str, language: str) -> str:
-    """Cartesia's best streaming model for the requested language."""
-    from language import (
-        CARTESIA_STT_ENGLISH_MODEL,
-        CARTESIA_STT_MULTILINGUAL_MODEL,
-        resolve_cartesia_language,
-    )
+    """Primary streaming STT model for the requested language."""
+    from language import resolve_deepgram_language
 
-    if (provider or "cartesia").lower() != "cartesia":
+    provider = (provider or "deepgram").lower()
+    if provider not in SUPPORTED_STT_PROVIDERS:
         raise ValueError(f"Unknown STT provider: {provider!r}")
-    return (
-        CARTESIA_STT_ENGLISH_MODEL
-        if resolve_cartesia_language(language) == "en"
-        else CARTESIA_STT_MULTILINGUAL_MODEL
-    )
+    lang = resolve_deepgram_language(language)
+    log.info("[deepgram-stt] default model=%s language=%s", PRIMARY_STT_MODEL, lang)
+    return PRIMARY_STT_MODEL
 
 
-def create_stt_service(
-    *,
-    provider: str,
-    language: str,
-    model: Optional[str],
-    api_key: str,
-    sample_rate: int = 16000,
-) -> Any:
-    """Build the Cartesia STT service for one call.
+def build_stt(*, language: str, provider: str = "deepgram"):
+    """Build the LiveKit Inference STT for one session.
 
-    Raises:
-        ValueError: for unknown providers (fail fast — never substitute a
-            different vendor mid-call).
-        RuntimeError: when the provider's Pipecat extra is not installed.
+    Returns an `inference.STT` instance. Raises RuntimeError when the
+    livekit-agents package is missing (deploy config error).
     """
-    provider = (provider or "cartesia").lower()
-    if provider == "cartesia":
-        from language import resolve_cartesia_stt_language
+    from language import resolve_deepgram_language
 
-        resolved_language, effective_model = resolve_cartesia_stt_language(
-            language=language,
-            model=model,
-        )
+    lang = resolve_deepgram_language(language)
+    try:
+        from livekit.agents import inference
+    except ImportError as exc:
+        raise RuntimeError("The 'livekit-agents' package is required.") from exc
+    if (provider or "deepgram").lower() == "assemblyai":
+        log.info("[assemblyai-stt] fallback model=%s language=%s", FALLBACK_STT_MODEL, lang)
+        return inference.STT(FALLBACK_STT_MODEL, language=lang)
+    log.info("[deepgram-stt] configuring model=%s language=%s", PRIMARY_STT_MODEL, lang)
+    return inference.STT(PRIMARY_STT_MODEL, language=lang)
 
-        try:
-            from pipecat.services.cartesia.stt import CartesiaSTTService
-        except ImportError as exc:
-            raise RuntimeError(
-                "Cartesia STT selected but 'pipecat-ai[cartesia]' is not installed."
-            ) from exc
 
-        log.info(
-            "[cartesia-stt] configuring model=%s language=%s input=pcm_s16le/%sHz",
-            effective_model,
-            resolved_language,
-            sample_rate,
-        )
-        return CartesiaSTTService(
-            api_key=api_key,
-            encoding="pcm_s16le",
-            sample_rate=sample_rate,
-            settings=CartesiaSTTService.Settings(model=effective_model, language=resolved_language),
-        )
+def build_stt_fallback(*, language: str):
+    """Build the AssemblyAI fallback STT (error path only, never dual-run)."""
+    from language import resolve_deepgram_language
 
-    raise ValueError(
-        f"Unknown STT provider: {provider!r} (want {'|'.join(SUPPORTED_STT_PROVIDERS)})"
-    )
+    lang = resolve_deepgram_language(language)
+    try:
+        from livekit.agents import inference
+    except ImportError as exc:
+        raise RuntimeError("The 'livekit-agents' package is required.") from exc
+    log.warning("[stt] primary failed; falling back to %s language=%s", FALLBACK_STT_MODEL, lang)
+    return inference.STT(FALLBACK_STT_MODEL, language=lang)
+
+
+def create_stt_service(*args: Any, **kwargs: Any):
+    """Back-compat alias for build_stt (old legacy-rtc-era import path)."""
+    language = kwargs.get("language", "en")
+    provider = kwargs.get("provider", "deepgram")
+    return build_stt(language=language, provider=provider)
 
 
 __all__ = [
+    "FALLBACK_STT_MODEL",
+    "PRIMARY_STT_MODEL",
     "SUPPORTED_STT_PROVIDERS",
+    "build_stt",
+    "build_stt_fallback",
     "create_stt_service",
     "default_stt_model",
 ]

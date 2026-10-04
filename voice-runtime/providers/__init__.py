@@ -1,7 +1,8 @@
-"""Provider factories behind one import surface.
+"""LiveKit provider descriptors behind one import surface.
 
-The pipeline imports from here — never from a vendor SDK directly — so
-adding a vendor stays a factory branch, not a pipeline rewrite.
+The worker builds AgentSession pieces from here — never from a vendor SDK
+directly in agent.py — so swapping a model stays a descriptor change, not a
+worker rewrite. No audio plumbing lives here; LiveKit Cloud carries media.
 """
 
 from providers.errors import (
@@ -10,37 +11,36 @@ from providers.errors import (
     describe_recovery,
     with_provider_retry,
 )
-from providers.llm import SUPPORTED_LLM_PROVIDERS, create_llm_service
+from providers.llm import (
+    OPENROUTER_FALLBACK_MODEL,
+    SUPPORTED_LLM_PROVIDERS,
+    build_llm,
+    default_openrouter_model,
+)
 from providers.stt import (
     SUPPORTED_STT_PROVIDERS,
-    create_stt_service,
+    build_stt,
     default_stt_model,
-)
-from providers.telephony import (
-    PlivoTelephonyClient,
-    build_answer_xml,
-    stream_url_for_call,
 )
 from providers.tts import (
     SUPPORTED_TTS_PROVIDERS,
+    build_tts,
     clamp_voice_speed,
-    create_tts_service,
 )
 
 __all__ = [
+    "OPENROUTER_FALLBACK_MODEL",
     "ProviderError",
     "SUPPORTED_LLM_PROVIDERS",
     "SUPPORTED_STT_PROVIDERS",
     "SUPPORTED_TTS_PROVIDERS",
-    "PlivoTelephonyClient",
-    "build_answer_xml",
-    "clamp_voice_speed",
+    "build_llm",
+    "build_stt",
+    "build_tts",
     "classify_provider_error",
-    "create_llm_service",
-    "create_stt_service",
-    "create_tts_service",
+    "clamp_voice_speed",
+    "default_openrouter_model",
     "default_stt_model",
     "describe_recovery",
-    "stream_url_for_call",
     "with_provider_retry",
 ]

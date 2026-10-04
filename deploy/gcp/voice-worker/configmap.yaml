@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sigulon-voice-worker-config
+  namespace: sigulon
+data:
+  MONGODB_DATABASE: sigulon
+  LIVEKIT_AGENT_NAME: sigulon-voice-agent
+  OPENROUTER_MODEL: google/gemini-2.5-flash
+  GCS_RECORDINGS_BUCKET: sigulon-recordings-prod
+  CALL_CONFIG_TTL_SECS: "3600"
+  ACTIVE_CALLS_KEY_TTL_SECS: "7200"

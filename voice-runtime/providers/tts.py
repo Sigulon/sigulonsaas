@@ -1,8 +1,8 @@
-"""TTS provider abstraction (Cartesia Sonic 3 / Sonic 3.5).
+"""TTS descriptor (Cartesia Sonic 3).
 
-Speed comes from the agent's ``settings.speed`` (Cartesia range 0.6–1.5) and
-is clamped here so a bad row never errors the whole pipeline — it logs and
-uses the nearest valid value instead.
+Voice UUID is ALWAYS explicit from config — never defaulted. Speed comes from
+the agent's settings (Cartesia range 0.6–1.5) and is clamped here so a bad
+row never errors the whole session.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from typing import Any
 log = logging.getLogger("voice-runtime.providers.tts")
 
 SUPPORTED_TTS_PROVIDERS = ("cartesia",)
+PRIMARY_TTS_MODEL = "sonic-3"
 
 _TTS_SPEED_MIN = 0.6
 _TTS_SPEED_MAX = 1.5
@@ -27,54 +28,32 @@ def clamp_voice_speed(speed: float) -> float:
     return max(_TTS_SPEED_MIN, min(_TTS_SPEED_MAX, value))
 
 
-def create_tts_service(
-    *,
-    provider: str,
-    model: str,
-    voice_id: str,
-    language: str,
-    speed: float,
-    api_key: str,
-) -> Any:
-    """Build the TTS service for one call."""
-    provider = (provider or "cartesia").lower()
-    if provider != "cartesia":
-        raise ValueError(
-            f"Unknown TTS provider: {provider!r} "
-            f"(want {'|'.join(SUPPORTED_TTS_PROVIDERS)})"
-        )
-    from language import resolve_cartesia_tts_language
-
-    resolved_language, effective_model = resolve_cartesia_tts_language(
-        language=language,
-        model=model,
-    )
+def build_tts(*, voice_id: str, language: str, speed: float = 1.0, model: str = PRIMARY_TTS_MODEL):
+    """Build the Cartesia TTS for one session. Voice UUID required."""
+    if not (voice_id or "").strip():
+        raise ValueError("Cartesia voice_id (UUID) must be explicit from config — never default.")
     try:
-        from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
+        from livekit.plugins import cartesia as cartesia_plugin
     except ImportError as exc:
-        raise RuntimeError(
-            "Cartesia TTS selected but 'pipecat-ai[cartesia]' is not installed."
-        ) from exc
+        raise RuntimeError("The 'livekit-plugins-cartesia' package is required.") from exc
     clamped = clamp_voice_speed(speed)
     if clamped != speed:
         log.warning("TTS speed %r out of range; clamped to %s", speed, clamped)
     log.info(
-        "[cartesia-tts] configuring model=%s voice=%s... language=%s "
-        "output=raw/pcm_s16le/16000Hz speed=%s",
-        effective_model, voice_id[:8] if voice_id else "none", resolved_language, clamped,
+        "[cartesia-tts] configuring model=%s voice=%s... speed=%s",
+        model, voice_id[:8], clamped,
     )
-    return CartesiaTTSService(
-        api_key=api_key,
-        encoding="pcm_s16le",
-        container="raw",
-        sample_rate=16000,
-        settings=CartesiaTTSService.Settings(
-            model=effective_model,
-            voice=voice_id,
-            language=resolved_language,
-            generation_config=GenerationConfig(speed=clamped),
-        ),
+    return cartesia_plugin.TTS(model=model, voice=voice_id, speed=clamped)
+
+
+def create_tts_service(*args: Any, **kwargs: Any):
+    """Back-compat alias for build_tts (old legacy-rtc-era import path)."""
+    return build_tts(
+        voice_id=kwargs.get("voice_id", ""),
+        language=kwargs.get("language", "en"),
+        speed=kwargs.get("speed", 1.0),
+        model=kwargs.get("model", PRIMARY_TTS_MODEL),
     )
 
 
-__all__ = ["SUPPORTED_TTS_PROVIDERS", "clamp_voice_speed", "create_tts_service"]
+__all__ = ["PRIMARY_TTS_MODEL", "SUPPORTED_TTS_PROVIDERS", "build_tts", "clamp_voice_speed", "create_tts_service"]

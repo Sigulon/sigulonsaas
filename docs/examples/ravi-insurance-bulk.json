@@ -1,0 +1,172 @@
+{
+  "bundle_version": 2,
+  "exported_from": {
+    "employee_name": "Ravi",
+    "employee_role": "Insurance Lead Quality Checker",
+    "mode": "bulk",
+    "language": "te-IN"
+  },
+  "first_response": "హలో అండి, {{lead_name}} తో మాట్లాడుతున్నానా?",
+  "sections": [
+    {
+      "section_key": "greeting_purpose",
+      "label": "Greeting & Call Purpose",
+      "order": 1,
+      "enabled": true,
+      "node_type": "llm",
+      "edges": [
+        {
+          "to_key": "qualify_vehicle",
+          "condition": "if the lead confirms their name and is open to speaking"
+        },
+        {
+          "to_key": "close",
+          "condition": "if the lead is not interested, wrong number, or asks not to call"
+        }
+      ],
+      "prompt": "Greet the customer warmly and confirm if they recently enquired about four-wheeler motor insurance renewal. Speak in polite Telugu mixed naturally with standard English terms. Ask only 1 question at a time. For example you might say: 'నమస్తే అండి, నేను స్టార్ ఇన్సూరెన్స్ నుంచి రవిని మాట్లాడుతున్నాను. మీ కారు ఇన్సూరెన్స్ రెన్యూవల్ గురించి కొద్దిగా మాట్లాడవచ్చా అండి?'"
+    },
+    {
+      "section_key": "qualify_vehicle",
+      "label": "Vehicle Model & Expiry",
+      "order": 2,
+      "enabled": true,
+      "node_type": "llm",
+      "edges": [
+        {
+          "to_key": "qualify_claims",
+          "condition": "once the lead mentions vehicle model or policy expiry date"
+        },
+        {
+          "to_key": "faqs",
+          "condition": "if the customer asks about insurance benefits or claim process"
+        }
+      ],
+      "prompt": "Ask the customer for their car model and when their current insurance policy is expiring. Keep each spoken turn short and conversational. For example you might say: 'మీది ఏ కారు మోడల్ అండి, అలాగే కరెంట్ పాలసీ ఎప్పుడు ఎక్స్‌పైర్ అవుతుంది?'"
+    },
+    {
+      "section_key": "qualify_claims",
+      "label": "No Claim Bonus Check",
+      "order": 3,
+      "enabled": true,
+      "node_type": "llm",
+      "edges": [
+        {
+          "to_key": "confirm_quote_dispatch",
+          "condition": "once NCB or previous claims information is captured"
+        },
+        {
+          "to_key": "faqs",
+          "condition": "if the customer has questions about NCB or discounts"
+        }
+      ],
+      "prompt": "Check if they made any claims in the last policy year to calculate their No Claim Bonus discount. Keep the tone warm and helpful. For example you might say: 'లాస్ట్ ఇయర్ ఏమైనా క్లెయిమ్స్ తీసుకున్నారా అండి, లేకపోతే ఫుల్ నో-క్లెయిమ్ బోనస్ డిస్కౌంట్ వర్తిస్తుంది అండి.'"
+    },
+    {
+      "section_key": "confirm_quote_dispatch",
+      "label": "Next Step & WhatsApp Dispatch",
+      "order": 4,
+      "enabled": true,
+      "node_type": "llm",
+      "edges": [
+        {
+          "to_key": "close",
+          "condition": "once customer agrees to receive the quote or confirms callback"
+        }
+      ],
+      "prompt": "Offer to send the lowest renewal quotes comparing 5 top insurers directly on their WhatsApp. Ask for their confirmation. For example you might say: 'మంచిదండి! టాప్ 5 కంపెనీల కొటేషన్స్ మీ వాట్సాప్‌ నెంబర్ {{phone}} కి పంపించమంటారా అండి?'"
+    },
+    {
+      "section_key": "faqs",
+      "label": "Business FAQs & Policy Knowledge",
+      "order": 5,
+      "enabled": true,
+      "node_type": "llm",
+      "edges": null,
+      "prompt": "Answer ONLY from what's written here; if a question isn't listed, use your don't-know response.\n\nQ: జీరో డెప్రిసియేషన్ కవర్ ఉందా?\nA: అవునండి, బంపర్ టు బంపర్ జీరో డెప్ కవరేజ్ అందుబాటులో ఉంది.\n\nQ: క్లెయిమ్ సెటిల్‌మెంట్ ఎలా ఉంటుంది?\nA: మా నెట్‌వర్క్ గ్యారేజీలలో క్యాష్‌లెస్‌గా 24 గంటల్లో క్లెయిమ్ సెటిల్ అవుతుంది అండి.\n\nQ: వాట్సాప్‌లో కొటేషన్ రావడానికి ఎంత సమయం పడుతుంది?\nA: కాల్ ముగిసిన వెంటనే 5 నిమిషాల్లో కొటేషన్స్ మీ వాట్సాప్‌కి వస్తాయి అండి.\n\nFor example you might say: 'తప్పకుండా అండి, మా దగ్గర జీరో డెప్ కవరేజ్ క్యాష్‌లెస్‌గా లభిస్తుంది.'"
+    },
+    {
+      "section_key": "close",
+      "label": "Call Wrap Up",
+      "order": 6,
+      "enabled": true,
+      "node_type": "llm",
+      "edges": null,
+      "prompt": "Thank the customer warmly for their valuable time and wish them a great day. Speak polite Telugu. Do not introduce any new questions. For example you might say: 'చాలా థ్యాంక్స్ అండి మీ సమయం ఇచ్చినందుకు. మా టీమ్ వాట్సాప్‌లో కొటేషన్ పంపిస్తారు. హావ్ ఏ గ్రేట్ డే అండి!'"
+    }
+  ],
+  "variables": [
+    {
+      "key": "phone",
+      "label": "Phone Number",
+      "source": "pre",
+      "required": true,
+      "extract_hint": null,
+      "is_phone": true,
+      "is_lead_name": false,
+      "is_headline": false,
+      "value_type": "text",
+      "choices": null
+    },
+    {
+      "key": "lead_name",
+      "label": "Lead Name",
+      "source": "pre",
+      "required": false,
+      "extract_hint": null,
+      "is_phone": false,
+      "is_lead_name": true,
+      "is_headline": true,
+      "value_type": "text",
+      "choices": null
+    },
+    {
+      "key": "vehicle_model",
+      "label": "Vehicle Model",
+      "source": "capture",
+      "required": false,
+      "extract_hint": "Extract car make and model, e.g., Hyundai Creta, Swift Dzire",
+      "is_phone": false,
+      "is_lead_name": false,
+      "is_headline": false,
+      "value_type": "text",
+      "choices": null
+    },
+    {
+      "key": "policy_expiry_date",
+      "label": "Policy Expiry Date",
+      "source": "capture",
+      "required": false,
+      "extract_hint": "Capture policy expiry date or month mentioned by the lead",
+      "is_phone": false,
+      "is_lead_name": false,
+      "is_headline": false,
+      "value_type": "text",
+      "choices": null
+    },
+    {
+      "key": "ncb_eligible",
+      "label": "NCB Eligible",
+      "source": "capture",
+      "required": false,
+      "extract_hint": "Yes if no claims made in past year, No otherwise",
+      "is_phone": false,
+      "is_lead_name": false,
+      "is_headline": false,
+      "value_type": "choice",
+      "choices": ["Yes", "No"]
+    },
+    {
+      "key": "whatsapp_confirmed",
+      "label": "WhatsApp Quote Confirmed",
+      "source": "capture",
+      "required": false,
+      "extract_hint": "Whether the caller confirmed receiving quotes on WhatsApp",
+      "is_phone": false,
+      "is_lead_name": false,
+      "is_headline": false,
+      "value_type": "boolean",
+      "choices": null
+    }
+  ]
+}

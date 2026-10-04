@@ -11,6 +11,8 @@ export interface IPhoneNumber extends Document {
   capabilities: string[];
   direction: "inbound" | "outbound" | "both";
   status: "active" | "released" | "pending";
+  region: string; // LiveKit region: default "us-east", Indian numbers "in-mumbai"
+  lkTrunkId?: string; // LiveKit inbound SIP trunk id for this number
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,6 +63,15 @@ const PhoneNumberSchema = new Schema<IPhoneNumber>(
       enum: ["active", "released", "pending"],
       default: "active",
       index: true,
+    },
+    region: {
+      type: String,
+      default: "us-east",
+      index: true,
+    },
+    lkTrunkId: {
+      type: String,
+      default: "",
     },
   },
   {

@@ -56,8 +56,20 @@ spec:
               valueFrom: { secretKeyRef: { name: sigulon-smtp-password, key: latest } }
             - name: EMAIL_FROM
               valueFrom: { secretKeyRef: { name: sigulon-email-from, key: latest } }
-            - name: VOICE_RUNTIME_URL
-              value: __RUNTIME_URL__
+            - name: LIVEKIT_URL
+              valueFrom: { secretKeyRef: { name: sigulon-livekit-url, key: latest } }
+            - name: LIVEKIT_API_KEY
+              valueFrom: { secretKeyRef: { name: sigulon-livekit-api-key, key: latest } }
+            - name: LIVEKIT_API_SECRET
+              valueFrom: { secretKeyRef: { name: sigulon-livekit-api-secret, key: latest } }
+            - name: LIVEKIT_WEBHOOK_SECRET
+              valueFrom: { secretKeyRef: { name: sigulon-livekit-webhook-secret, key: latest } }
+            - name: LIVEKIT_AGENT_NAME
+              value: sigulon-voice-agent
+            - name: GCS_RECORDINGS_BUCKET
+              value: __RECORDINGS_BUCKET__
+            - name: PLIVO_DUAL_RUN
+              value: "true"
             - name: PUBLIC_WEB_URL
               value: __WEB_URL__
             - name: APP_URL

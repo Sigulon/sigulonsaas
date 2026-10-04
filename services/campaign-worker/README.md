@@ -1,6 +1,6 @@
 # Sigulon Campaign Worker (outbound async dialing)
 
-Pops dial jobs from Redis, dials via Plivo, and converges every contact to a
+Pops dial jobs from Redis, dials via LiveKit (room + dispatch + SIP participant), and converges every contact to a
 terminal state. The web service enqueues (`POST /api/campaigns/[id]/start`,
 `POST /api/calls`); this worker owns everything after: layered dial
 governors, DNC re-checks, retries with backoff, stale heals, and campaign
@@ -8,18 +8,14 @@ completion.
 
 For an organization with active saved Plivo credentials, the worker decrypts
 that organization’s AES-256-GCM credential pair using `ENCRYPTION_SECRET` and
-uses it for its dial. Complete `PLIVO_AUTH_ID`/`PLIVO_AUTH_TOKEN` environment
-credentials are only the platform fallback. The worker and web service must
+uses it for legacy Plivo paths only. LiveKit (`LIVEKIT_URL/API_KEY/API_SECRET`) is the dial path; `PLIVO_*` remain only as a dual-run fallback. The worker and web service must
 receive the same `ENCRYPTION_SECRET`.
 
 ```
 web /start ──claims first 500, marks queued──▶ sigulon:campaign:queue (LIST)
                                                     │ BRPOP
                                                     ▼
-worker ──DNC?──slots?──calls row──Plivo dial──▶ callee answers
-                                                    │ answer_url (web)
-                                                    ▼
-                                          wss://runtime/voice-runtime/{id}
+worker ──DNC+consent?──slots?──calls row──LiveKit dispatch+SIP dial──▶ callee answers (speaks first)
 hangup_url (web) ──calls + campaign_contacts terminal updates
 sweep (120s) ──requeue lost jobs──heal missed webhooks──refill next 500──complete drained
 ```

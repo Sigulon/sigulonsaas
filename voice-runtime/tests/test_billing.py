@@ -84,5 +84,46 @@ class TestNotifyReserve(unittest.TestCase):
         self.assertFalse(_run(go()))
 
 
+class TestNotifySettle(unittest.TestCase):
+    def test_settle_success(self):
+        async def go():
+            with patch("httpx.AsyncClient",
+                        return_value=_client(200, {"ok": True})):
+                return await billing.notify_credits_settle(
+                    "c1", 125.0, web_base="https://w", secret="s")
+
+        self.assertTrue(_run(go()))
+
+    def test_settle_missing_config_false(self):
+        async def go():
+            with patch.object(billing.os, "getenv", return_value=""):
+                return await billing.notify_credits_settle("c1", 10.0)
+
+        self.assertFalse(_run(go()))
+
+    def test_settle_server_error_false(self):
+        async def go():
+            with patch("httpx.AsyncClient",
+                        return_value=_client(500, {"error": "bad"})):
+                return await billing.notify_credits_settle(
+                    "c1", 10.0, web_base="https://w", secret="s")
+
+        self.assertFalse(_run(go()))
+
+
+class TestZeroBalance(unittest.TestCase):
+    def test_message_default(self):
+        action = billing.zero_balance_action(None, None)
+        self.assertEqual(action["action"], "message")
+
+    def test_forward_with_number(self):
+        action = billing.zero_balance_action("forward_number", "+911234567890")
+        self.assertEqual(action, {"action": "forward", "to": "+911234567890"})
+
+    def test_forward_without_number_falls_back_to_message(self):
+        action = billing.zero_balance_action("forward_number", "")
+        self.assertEqual(action["action"], "message")
+
+
 if __name__ == "__main__":
     unittest.main()

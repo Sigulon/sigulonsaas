@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 const navigationItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Voice Agents", href: "/agents", icon: Bot },
-  { name: "Agent Builder", href: "/agents/builder", icon: Sparkles },
+  { name: "Create Agent", href: "/agents/new", icon: Sparkles },
   { name: "Phone Numbers", href: "/phone-numbers", icon: Phone },
   { name: "Campaigns", href: "/campaigns", icon: Megaphone },
   { name: "Call Logs", href: "/calls", icon: PhoneCall },

@@ -56,6 +56,8 @@ export async function GET() {
         stt_provider: CARTESIA_STT_PROVIDER,
         enabled_tools: ag.config.tools.enabledTools,
         phone_numbers: numbers,
+        description: ag.description || null,
+        bundle: ag.bundle || null,
         created_at: ag.createdAt.toISOString(),
         updated_at: ag.updatedAt.toISOString(),
       };
@@ -99,6 +101,7 @@ export async function POST(req: NextRequest) {
       enabledTools = ["check_availability", "pricing_lookup"],
       settings = {},
       specification,
+      description,
       bundle: requestedBundle,
       status: agentStatus = "active",
     } = body;
@@ -135,6 +138,7 @@ export async function POST(req: NextRequest) {
       organizationId: orgId,
       name,
       status: agentStatus,
+      description: description || null,
       specification,
       bundle,
       config: {

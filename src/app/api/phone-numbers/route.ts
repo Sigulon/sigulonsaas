@@ -2,8 +2,49 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext, requireRole } from "@/lib/auth-helpers";
 import { PhoneNumberRepository, AgentRepository } from "@sigulon/database";
 import { normalizePhone } from "@/lib/phone";
+import { LIVEKIT_AGENT_NAME, buildDispatchMetadata, zentrunkUriForProject } from "@/lib/livekit";
 
 export const dynamic = "force-dynamic";
+
+async function provisionLivekitInboundTrunk(input: {
+  orgId: string;
+  agentId: string | null;
+  phoneNumber: string;
+  region: string;
+}): Promise<string> {
+  // Best-effort: creates a LiveKit inbound SIP trunk for this number with
+  // metadata {orgId, agentId}. The Plivo Zentrunk for the number must point
+  // at zentrunkUriForProject() (see docs/voice-runtime.md).
+  try {
+    const mod = await import("livekit-server-sdk");
+    const SipClient = (mod as { SipClient?: new (u: string, k: string, s: string) => unknown }).SipClient;
+    if (!SipClient) return "";
+    const client = new SipClient(
+      process.env.LIVEKIT_URL || "",
+      process.env.LIVEKIT_API_KEY || "",
+      process.env.LIVEKIT_API_SECRET || ""
+    ) as {
+      createSipInboundTrunk?: (req: unknown) => Promise<{ sipTrunkId?: string; trunkId?: string }>;
+    };
+    if (typeof client.createSipInboundTrunk !== "function") return "";
+    const res = await client.createSipInboundTrunk({
+      name: `sigulon-${input.orgId}-${input.phoneNumber}`,
+      numbers: [input.phoneNumber],
+      metadata: buildDispatchMetadata({
+        orgId: input.orgId,
+        agentId: input.agentId || "",
+        direction: "inbound",
+      }),
+      // Dispatch rule fires the voice worker for every inbound SIP participant.
+      dispatchRules: [{ dispatchRuleIndividual: { roomPrefix: "sigulon-call-" } }],
+      agentName: LIVEKIT_AGENT_NAME,
+    });
+    return String(res?.sipTrunkId || res?.trunkId || "");
+  } catch (err) {
+    console.warn("[phone-numbers] LiveKit trunk provisioning skipped:", err);
+    return "";
+  }
+}
 
 export async function GET() {
   try {
@@ -21,6 +62,8 @@ export async function GET() {
       provider: n.provider,
       direction: n.direction,
       status: n.status,
+      region: (n as { region?: string }).region || "us-east",
+      lkTrunkId: (n as { lkTrunkId?: string }).lkTrunkId || "",
       agentId: n.agentId ? (typeof n.agentId === "object" && "_id" in n.agentId ? String((n.agentId as { _id: unknown })._id) : String(n.agentId)) : null,
       agentName: n.agentId && typeof n.agentId === "object" && "name" in n.agentId ? String((n.agentId as { name: unknown }).name) : null,
       createdAt: n.createdAt.toISOString(),
@@ -109,9 +152,31 @@ export async function POST(req: NextRequest) {
       provider,
       direction,
       agentId: agentId || undefined,
+      region: normalized.startsWith("+91") ? "in-mumbai" : "us-east",
     });
 
-    return NextResponse.json({ phoneNumber: created }, { status: 201 });
+    // Provision the LiveKit inbound trunk (metadata {orgId, agentId}).
+    // Point the Plivo Zentrunk for this number at `zentrunkUriForProject()`.
+    const lkTrunkId = await provisionLivekitInboundTrunk({
+      orgId,
+      agentId: agentId || null,
+      phoneNumber: normalized,
+      region: (created as { region?: string }).region || "us-east",
+    });
+    let withTrunk = created;
+    if (lkTrunkId) {
+      withTrunk =
+        (await PhoneNumberRepository.update(created._id, orgId, { lkTrunkId })) || created;
+    }
+
+    return NextResponse.json(
+      {
+        phoneNumber: withTrunk,
+        plivoZentrunkUri: zentrunkUriForProject(),
+        livekitAgent: LIVEKIT_AGENT_NAME,
+      },
+      { status: 201 }
+    );
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
     const code = (err as NodeJS.ErrnoException).code;

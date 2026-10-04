@@ -6,6 +6,7 @@ import {
   CallState,
 } from "@sigulon/database";
 import { computeUsageCredits, settleCallCredits } from "@/lib/credits";
+import { isPlivoDualRunEnabled } from "@/lib/livekit";
 import { getPlivoWebhookTokenForOrg } from "@/lib/plivo-credentials";
 import {
   TERMINAL_CALL_STATUSES,
@@ -26,6 +27,12 @@ function formToParams(form: FormData): Record<string, string> {
 }
 
 export async function POST(req: NextRequest) {
+  // Plivo-side call-state reconciliation ONLY during the 2-week dual-run
+  // window (feature-flagged via PLIVO_DUAL_RUN). LiveKit webhooks are the
+  // source of truth after migration; this handler is deleted at cleanup.
+  if (!isPlivoDualRunEnabled()) {
+    return NextResponse.json({ success: true, ignored: true, reason: "dual-run disabled" });
+  }
   try {
     const params = formToParams(await req.formData());
     const p = params as PlivoStatusParams;

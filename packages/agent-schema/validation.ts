@@ -170,9 +170,10 @@ export function validateAgentBundle(data: unknown): BundleValidationResult {
     if (
       exportedFrom.mode !== "inbound" &&
       exportedFrom.mode !== "outbound" &&
-      exportedFrom.mode !== "bulk"
+      exportedFrom.mode !== "bulk" &&
+      exportedFrom.mode !== "instant"
     ) {
-      errors.push("Field 'exported_from.mode' must be 'inbound', 'outbound', or 'bulk'");
+      errors.push("Field 'exported_from.mode' must be 'inbound', 'outbound', 'bulk', or 'instant'");
     }
     if (!exportedFrom.language) errors.push("Missing 'exported_from.language'");
     if (exportedFrom.languages !== undefined && (!Array.isArray(exportedFrom.languages) || exportedFrom.languages.some((language) => typeof language !== "string" || !language.trim()))) {
@@ -355,7 +356,8 @@ export function repairAgentBundle(rawInput: string | Record<string, unknown>): A
     mode:
       exportedFrom.mode === "inbound" ||
       exportedFrom.mode === "outbound" ||
-      exportedFrom.mode === "bulk"
+      exportedFrom.mode === "bulk" ||
+      exportedFrom.mode === "instant"
         ? exportedFrom.mode
         : "outbound",
     language: String(exportedFrom.language || "en"),

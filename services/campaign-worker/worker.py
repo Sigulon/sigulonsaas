@@ -12,13 +12,11 @@ campaign converges to a terminal state with no operator input.
 from __future__ import annotations
 
 import logging
-import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import config as config_mod  # noqa: F401 - re-exported for worker consumers
-import credentials as credentials_mod
 import dialer as dialer_mod
 import phone as phone_mod
 import queueing as queueing_mod
@@ -205,15 +203,15 @@ def _process_job(ctx: WorkerContext, job: dict[str, Any]) -> str:
     if number is None:
         return _terminal(ctx, job, cc, single_call, "failed", "no-from-number")
 
-    plivo_credentials = credentials_mod.get_plivo_credentials(
-        ctx.database,
-        job["org_id"],
-        platform_auth_id=cfg.plivo_auth_id,
-        platform_auth_token=cfg.plivo_auth_token,
-        encryption_secret=cfg.encryption_secret,
-    )
-    if plivo_credentials is None:
-        return _terminal(ctx, job, cc, single_call, "failed", "no-plivo-credentials")
+    # Consent: CampaignContact.consent required (forward-compatible: legacy
+    # rows without the field fall back to contact-level opt-out only).
+    consent = (cc or {}).get("consent", True)
+    if consent is False or (cc is not None and cc.get("consent") in ("false", "0", "no", "opt_out")):
+        return _terminal(ctx, job, cc, single_call, "skipped", "no-consent")
+
+    sip_trunk_id = (number or {}).get("lk_trunk_id") or ""
+    if not sip_trunk_id:
+        return _terminal(ctx, job, cc, single_call, "failed", "no-outbound-trunk")
 
     layers = _slot_layers(ctx, job, phone_mod.digits_of(number["phone_number"]))
     admitted, refusing = queueing_mod.acquire_layers(ctx.redis, layers)
@@ -233,14 +231,15 @@ def _process_job(ctx: WorkerContext, job: dict[str, Any]) -> str:
     if single_call is not None:
         call_id = single_call["id"]
     else:
+        room_preview = dialer_mod.room_name_for_call(f"preview-{job['contact_id']}")
         call_id = store_mod.insert_call(ctx.database, {
             "org_id": job["org_id"],
             "agent_id": agent["id"],
             "campaign_id": job["campaign_id"],
             "contact_id": job["contact_id"],
             "phone_number_id": number["id"],
-            "cartesia_call_id": f"plivo:out:{uuid.uuid4().hex}",
-            "provider": "plivo",
+            "provider": "livekit",
+            "provider_call_id": room_preview,
             "direction": "outbound",
             "to_number": contact.get("phone_number"),
             "from_number": number["phone_number"],
@@ -259,13 +258,23 @@ def _process_job(ctx: WorkerContext, job: dict[str, Any]) -> str:
             return "retry_scheduled"
 
     try:
+        room = dialer_mod.room_name_for_call(call_id)
+        # Stamp the room as the provider leg before dialing (webhook linkage).
+        store_mod.update_call(ctx.database, call_id, {"providerCallId": room})
         dial_result = dialer_mod.dial(
-            auth_id=plivo_credentials["auth_id"],
-            auth_token=plivo_credentials["auth_token"],
-            from_number=number["phone_number"],
-            to_number=to_e164,
-            answer_url=dialer_mod.answer_url_for_call(cfg.public_web_url, call_id),
-            hangup_url=dialer_mod.hangup_url(cfg.public_web_url, call_id),
+            room=room,
+            call_id=call_id,
+            org_id=job["org_id"],
+            agent_id=agent["id"],
+            agent_name=getattr(cfg, "livekit_agent_name", "sigulon-voice-agent"),
+            metadata=dialer_mod.dispatch_metadata(job["org_id"], agent["id"], call_id),
+            sip_trunk_id=sip_trunk_id,
+            sip_call_to=to_e164,
+            participant_identity=to_e164,
+            sip_from_number=number["phone_number"],
+            livekit_url=cfg.livekit_url,
+            api_key=cfg.livekit_api_key,
+            api_secret=cfg.livekit_api_secret,
             timeout_seconds=cfg.dial_timeout_seconds,
         )
     except Exception as exc:  # noqa: BLE001 - dial failures are routine
@@ -287,10 +296,11 @@ def _process_job(ctx: WorkerContext, job: dict[str, Any]) -> str:
             )
         return "retry_scheduled"
 
-    # Accepted: provider owns the call now; slots ride their TTLs.
+    # Accepted: LiveKit owns the call now; slots ride their TTLs.
+    # The callee speaks first — the agent responds after first speech (no greet-first).
     store_mod.update_call(ctx.database, call_id, {
         "status": "dialing",
-        "metadata": {"plivo_request_uuid": dial_result.get("request_uuid")},
+        "metadata": {"livekit_dispatch_id": dial_result.get("dispatch_id"), "livekit_room": dial_result.get("room")},
     })
     if cc is not None:
         store_mod.set_contact_status(
@@ -300,7 +310,7 @@ def _process_job(ctx: WorkerContext, job: dict[str, Any]) -> str:
     store_mod.insert_call_event(
         ctx.database, org_id=job["org_id"], call_id=call_id,
         event="outbound.dialed",
-        payload={"to": to_e164, "request_uuid": dial_result.get("request_uuid")},
+        payload={"to": to_e164, "dispatch_id": dial_result.get("dispatch_id"), "room": dial_result.get("room")},
     )
     log.info("dialed contact %s (call=%s)", job["contact_id"], call_id)
     return "dialed"

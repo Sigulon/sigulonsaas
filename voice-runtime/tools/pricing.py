@@ -10,36 +10,27 @@ settings and the next call quotes it.
 from __future__ import annotations
 
 import logging
-from typing import Any
-
-from pipecat.adapters.schemas.function_schema import FunctionSchema
-from pipecat.services.llm_service import FunctionCallParams
+from typing import Annotated, Any
 
 from tools.common import ctx_ids, load_agent
 
 log = logging.getLogger("voice-runtime.tools.pricing")
 
 
-async def pricing_lookup_handler(params: FunctionCallParams) -> None:
-    want = str(params.arguments.get("item", "")).strip().lower()
-    _, tenant_id, agent_id = ctx_ids(params)
-
+async def pricing_lookup_impl(tenant_id: str, agent_id: str, *, item: str = "") -> dict[str, Any]:
+    want = (item or "").strip().lower()
     try:
         agent = await load_agent(tenant_id, agent_id)
     except Exception as exc:  # noqa: BLE001
         log.exception("pricing agent lookup failed")
-        await params.result_callback({"status": "error", "error": str(exc)})
-        return
+        return {"status": "error", "error": str(exc)}
 
     settings = (agent or {}).get("settings") or {}
     if not isinstance(settings, dict):
         settings = {}
     configured_pricing = settings.get("pricing") or []
     if isinstance(configured_pricing, dict):
-        items = [
-            {"item": item, "price": price}
-            for item, price in configured_pricing.items()
-        ]
+        items = [{"item": k, "price": v} for k, v in configured_pricing.items()]
     elif isinstance(configured_pricing, list):
         items = configured_pricing
     else:
@@ -47,40 +38,64 @@ async def pricing_lookup_handler(params: FunctionCallParams) -> None:
     currency = str(settings.get("currency") or "INR")
 
     if not items:
-        await params.result_callback({
+        return {
             "status": "unconfigured",
             "items": [],
             "message": (
                 "No pricing list is configured for this business yet. "
                 "Take the caller's details and promise a callback with a quote."
             ),
-        })
-        return
+        }
 
     if want:
-        items = [i for i in items
-                 if isinstance(i, dict) and want in str(i.get("item", "")).lower()]
+        items = [i for i in items if isinstance(i, dict) and want in str(i.get("item", "")).lower()]
 
-    await params.result_callback({
+    return {
         "status": "ok",
         "currency": currency,
         "items": items,
         "message": "Quote exactly these configured prices — never invent discounts.",
-    })
+    }
 
 
-PRICING_LOOKUP_SCHEMA = FunctionSchema(
-    name="pricing_lookup",
-    description=(
+try:
+    from livekit.agents import RunContext, function_tool
+
+    @function_tool()
+    async def pricing_lookup(
+        context: RunContext,
+        item: Annotated[str, "Optional item/service to filter by, e.g. 'consultation'."] = "",
+    ) -> dict[str, Any]:
+        """Look up the business's configured prices. Call this when the caller asks about cost, fees, rates, or quotes."""
+        _, tenant_id, agent_id = ctx_ids(context)
+        return await pricing_lookup_impl(tenant_id, agent_id, item=item)
+except ImportError:  # pragma: no cover
+    async def pricing_lookup(context: Any, **kwargs: Any) -> dict[str, Any]:  # type: ignore[no-redef]
+        """Look up the business's configured prices. Call this when the caller asks about cost, fees, rates, or quotes."""
+        _, tenant_id, agent_id = ctx_ids(context)
+        return await pricing_lookup_impl(tenant_id, agent_id, **kwargs)
+
+
+async def pricing_lookup_handler(params: Any) -> dict[str, Any]:
+    args = getattr(params, "arguments", {}) or {}
+    _, tenant_id, agent_id = ctx_ids(params)
+    result = await pricing_lookup_impl(tenant_id, agent_id, item=str(args.get("item", "")))
+    cb = getattr(params, "result_callback", None)
+    if callable(cb):
+        await cb(result)
+    return result
+
+
+PRICING_LOOKUP_SPEC = {
+    "name": "pricing_lookup",
+    "description": (
         "Look up the business's configured prices. Call this when the caller "
         "asks about cost, fees, rates, or quotes."
     ),
-    properties={
-        "item": {
-            "type": "string",
-            "description": "Optional item/service to filter by, e.g. 'consultation'.",
-        },
+    "properties": {
+        "item": {"type": "string", "description": "Optional item/service to filter by, e.g. 'consultation'."},
     },
-    required=[],
-    handler=pricing_lookup_handler,
-)
+    "required": [],
+}
+
+PRICING_LOOKUP_SCHEMA = PRICING_LOOKUP_SPEC

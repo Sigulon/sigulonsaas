@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   description: "Sigulon AI voice-agent workspace — agents, campaigns, calls, and billing.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"

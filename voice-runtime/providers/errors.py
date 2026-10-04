@@ -1,16 +1,17 @@
 """Per-provider failure classification + bounded retry.
 
-Pipeline policy (one place, so every provider behaves the same way):
+Session policy (one place, so every provider behaves the same way):
 
-* **STT** — Pipecat services own their WebSocket reconnects. Our job is to
-  pick the right vendor per language (see :mod:`providers.stt`) and to fail
-  fast on auth/config errors instead of flapping.
+* **STT** — LiveKit Inference owns reconnects. Our job is to pick the right
+  language tag (see :mod:`language`) and fall back to AssemblyAI only on a
+  primary provider error (never dual-run).
 * **LLM** — transient transport errors (timeouts, 5xx, connection resets)
   are retried with exponential backoff; auth/validation errors fail fast.
+  OpenRouter fallback engages only on primary error.
 * **TTS** — never silently substitute a different voice/vendor mid-call;
   transient errors get one retry, then the call ends loudly.
-* **Telephony / persistence** — REST + MongoDB writes use the same retry
-  helper so webhooks and ``finalize_call()`` survive redelivery bursts.
+* **Telephony / persistence** — LiveKit SIP + MongoDB writes use the same
+  retry helper so webhooks survive redelivery bursts.
 
 Anything decorated here never masks ``asyncio.CancelledError``.
 """
@@ -164,11 +165,11 @@ async def with_provider_retry(
 def describe_recovery(provider: str) -> str:
     """Human-readable recovery policy for a provider (logs + docs)."""
     policies = {
-        "cartesia-stt": "Pipecat WS auto-reconnect; finalize-flush on VAD stop",
+        "deepgram-stt": "LiveKit Inference auto-reconnect; AssemblyAI fallback on primary error only",
         "openrouter": "transient 5xx/timeout retried x3 with backoff; auth fails fast",
         "cartesia-tts": "one transient retry; never substitute another voice mid-call",
-        "plivo": "REST hangup/dial retried x3 with backoff; answer XML is a pure function",
-        "mongodb": "session/finalize writes retried x3; Redis finalized-marker keeps it idempotent",
+        "livekit-sip": "SIP redispatch on room kill; no double billing via idempotent settle",
+        "mongodb": "config/finalize writes retried x3; webhook idempotency keeps it exactly-once",
     }
     return policies.get(provider, "transient retried x3 with backoff; permanent fails fast")
 

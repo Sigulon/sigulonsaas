@@ -61,8 +61,8 @@ export function callConfigCacheKey(callId: string): string {
 // Internal Agent Specification (Source of Truth from 12-step wizard)
 // ---------------------------------------------------------------------------
 
-/** `bulk` is an outbound campaign mode with pre-loaded lead data. */
-export type CallType = "inbound" | "outbound" | "bulk";
+/** `bulk` is an outbound campaign mode with pre-loaded lead data; `instant` is high-intent immediate qualification. */
+export type CallType = "inbound" | "outbound" | "bulk" | "instant";
 
 export interface QualificationField {
   key: string;

@@ -1,14 +1,12 @@
-"""Structured context logging + in-memory metrics + readiness checks.
+"""Structured context logging + in-memory metrics + readiness checks (LiveKit).
 
 Logging: :class:`JsonFormatter` emits one JSON object per line with the
 ``service`` name plus the current call context (``call_id``, ``tenant_id``,
-``agent_id``) from :mod:`contextvars`. :func:`bind_call_context` sets it at
-the top of the WebSocket handler; everything logged deeper in the call
-automatically carries it — no ``extra={}`` plumbing.
+``agent_id``). Metrics: process-local counters/gauges with a Prometheus text
+renderer. Readiness probes LiveKit + Redis + Mongo + provider keys.
 
-Metrics: process-local counters/gauges with a Prometheus text renderer at
-``GET /metrics``. Multi-replica aggregation is a Phase 9 concern; per-pod
-counters are enough to alert on today.
+Log/alert formats are unchanged from the legacy-rtc era so dashboards keep
+working (`sigulon_runtime_*`, `[voice-latency]`, `[redis]`, ...).
 """
 
 from __future__ import annotations
@@ -77,7 +75,6 @@ class JsonFormatter(logging.Formatter):
         for key, value in ctx.items():
             if value is not None:
                 obj[key] = value
-        # Explicit extras (e.g. duration_s) ride along without clobbering ctx.
         for key in ("outcome", "duration_s", "provider", "event"):
             if hasattr(record, key):
                 obj[key] = getattr(record, key)
@@ -85,10 +82,6 @@ class JsonFormatter(logging.Formatter):
             obj["exc"] = self.formatException(record.exc_info)
         return json.dumps(obj, ensure_ascii=False)
 
-
-# ---------------------------------------------------------------------------
-# Metrics
-# ---------------------------------------------------------------------------
 
 _lock = threading.Lock()
 _counters: dict[str, float] = {}
@@ -121,12 +114,8 @@ def render_prometheus() -> str:
     with _lock:
         items = sorted(_counters.items())
     for name, value in items:
-        if name.startswith("calls_"):
-            rendered = int(value) if float(value).is_integer() else value
-            lines.append(f'sigulon_runtime_{name} {rendered}')
-        else:
-            rendered = int(value) if float(value).is_integer() else value
-            lines.append(f'sigulon_runtime_{name} {rendered}')
+        rendered = int(value) if float(value).is_integer() else value
+        lines.append(f'sigulon_runtime_{name} {rendered}')
     uptime = int(time.monotonic() - _started_at)
     lines.append("# HELP sigulon_runtime_uptime_seconds Process uptime.")
     lines.append("# TYPE sigulon_runtime_uptime_seconds counter")
@@ -134,17 +123,24 @@ def render_prometheus() -> str:
     return "\n".join(lines) + "\n"
 
 
-# ---------------------------------------------------------------------------
-# Readiness
-# ---------------------------------------------------------------------------
+def log_metrics(metrics: Any) -> None:
+    """Log an Agents SDK MetricsCollectedEvent payload (dashboard-compatible)."""
+    try:
+        mtype = getattr(metrics, "type", type(metrics).__name__)
+        logging.getLogger("voice-runtime.observability").info(
+            "[voice-metrics] type=%s payload=%s",
+            mtype,
+            str(metrics)[:500],
+        )
+        inc(f"metrics_{mtype}")
+    except Exception:  # noqa: BLE001 - metrics never break audio
+        pass
 
 
 async def check_readiness() -> dict[str, Any]:
     """Probe runtime dependencies. Never raises — failures become check rows."""
     checks: dict[str, dict[str, Any]] = {}
 
-    # Redis is required for distributed concurrency admission. Cache/session
-    # reads themselves degrade quickly, but readiness is correctly degraded.
     try:
         from config import get_redis
 
@@ -155,7 +151,6 @@ async def check_readiness() -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         checks["redis"] = {"ok": False, "error": str(exc)[:200]}
 
-    # MongoDB is the source of truth; verify the existing pooled client.
     try:
         from config import ping_mongodb
 
@@ -163,36 +158,31 @@ async def check_readiness() -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         checks["mongodb"] = {"ok": False, "error": str(exc)[:200]}
 
-    # The runtime's fixed provider stack requires these two keys.
+    livekit_ok = bool(os.getenv("LIVEKIT_URL")) and bool(os.getenv("LIVEKIT_API_KEY")) and bool(
+        os.getenv("LIVEKIT_API_SECRET")
+    )
+    deepgram_ok = bool(os.getenv("DEEPGRAM_API_KEY")) or livekit_ok
     cartesia_ok = bool(os.getenv("CARTESIA_API_KEY"))
     openrouter_ok = bool(os.getenv("OPENROUTER_API_KEY"))
-    plivo_ok = bool(os.getenv("PLIVO_AUTH_ID")) and bool(os.getenv("PLIVO_AUTH_TOKEN"))
-    checks["cartesia_stt"] = {"ok": cartesia_ok}
+    checks["livekit"] = {"ok": livekit_ok}
+    if not livekit_ok:
+        checks["livekit"]["error"] = "LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET not configured"
+    checks["deepgram_stt"] = {"ok": deepgram_ok}
     checks["cartesia_tts"] = {"ok": cartesia_ok}
+    if not cartesia_ok:
+        checks["cartesia_tts"]["error"] = "CARTESIA_API_KEY not configured"
     checks["openrouter"] = {
         "ok": openrouter_ok,
-        "model": (
-            os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
-            or "google/gemini-2.5-flash"
-        ).strip() or "google/gemini-2.5-flash",
+        "model": (os.getenv("OPENROUTER_MODEL", "") or "").strip() or "fallback: livekit-inference",
     }
-    checks["plivo"] = {"ok": plivo_ok}
-    for name, is_ok, required in (
-        ("cartesia_stt", cartesia_ok, "CARTESIA_API_KEY"),
-        ("cartesia_tts", cartesia_ok, "CARTESIA_API_KEY"),
-        ("openrouter", openrouter_ok, "OPENROUTER_API_KEY"),
-        ("plivo", plivo_ok, "PLIVO_AUTH_ID and PLIVO_AUTH_TOKEN"),
-    ):
-        if not is_ok:
-            checks[name]["error"] = f"{required} not configured"
+    if not openrouter_ok:
+        checks["openrouter"]["error"] = "OPENROUTER_API_KEY not configured (fallback LLM only)"
 
     overall_ok = bool(
         checks["redis"]["ok"]
         and checks["mongodb"]["ok"]
-        and checks["cartesia_stt"]["ok"]
+        and checks["livekit"]["ok"]
         and checks["cartesia_tts"]["ok"]
-        and checks["openrouter"]["ok"]
-        and checks["plivo"]["ok"]
     )
     return {
         "status": "ok" if overall_ok else "degraded",
@@ -209,6 +199,7 @@ __all__ = [
     "clear_call_context",
     "current_call_context",
     "inc",
+    "log_metrics",
     "render_prometheus",
     "set_gauge",
     "snapshot",

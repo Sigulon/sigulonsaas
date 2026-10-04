@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 import { getOrgContext } from "@/lib/auth-helpers";
 import { canCreateAndRun } from "@/lib/roles";
 import {
@@ -10,26 +9,9 @@ import {
   PhoneNumberRepository,
 } from "@sigulon/database";
 import { normalizePhone } from "@/lib/phone";
-import { getPlivoCredentialsForOrg } from "@/lib/plivo-credentials";
-import { dialPlivoCall } from "@/lib/plivo";
+import { LIVEKIT_AGENT_NAME, buildDispatchMetadata, roomNameForCall } from "@/lib/livekit";
 
 export const dynamic = "force-dynamic";
-
-function isPublicHttpsUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    const host = parsed.hostname.toLowerCase();
-    return (
-      parsed.protocol === "https:" &&
-      host !== "localhost" &&
-      host !== "127.0.0.1" &&
-      host !== "::1" &&
-      !host.endsWith(".localhost")
-    );
-  } catch {
-    return false;
-  }
-}
 
 type PopulatedAgent = {
   _id: { toString(): string };
@@ -281,46 +263,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. Resolve Plivo credentials
-    let plivoCreds = null;
-    try {
-      plivoCreds = await getPlivoCredentialsForOrg(orgId);
-    } catch (err) {
-      console.error("[api/calls] unable to load Plivo credentials:", err);
-    }
-    if (!plivoCreds) {
+    // 5. LiveKit must be configured (outbound dial: room + dispatch + SIP).
+    if (!process.env.LIVEKIT_URL || !process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
       return NextResponse.json(
-        {
-          error:
-            "No usable Plivo credentials are configured for this workspace. Please enter your Plivo Auth ID and Auth Token in Telephony Settings or .env.local.",
-        },
+        { error: "LiveKit is not configured for this workspace. Set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET." },
         { status: 422 }
       );
     }
-
-    // 6. Reject before creating a call record when Plivo cannot possibly
-    // reach us. Leaving a queued row here made a fixed tunnel look like an
-    // already-dispatched call on an idempotent retry.
-    let publicWebUrl = (process.env.PUBLIC_WEB_URL?.trim() || "").replace(/\/+$/, "");
-    if (!isPublicHttpsUrl(publicWebUrl)) {
-      const fwdHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-      const fwdProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "https";
-      if (fwdHost) {
-        publicWebUrl = `${fwdProto}://${fwdHost}`;
-      } else {
-        const origin = req.nextUrl.origin;
-        if (origin) {
-          publicWebUrl = origin.replace(/\/+$/, "");
-        }
-      }
-    }
-
-    if (!isPublicHttpsUrl(publicWebUrl)) {
+    const outboundTrunkId =
+      (outboundNumber as unknown as { lkTrunkId?: string })?.lkTrunkId || "";
+    if (!outboundTrunkId) {
       return NextResponse.json(
-        {
-          error:
-            "Plivo outbound dial failed: Plivo requires a public HTTPS URL (not localhost) to deliver audio. Set PUBLIC_WEB_URL in .env.local to your Cloudflare or ngrok tunnel URL.",
-        },
+        { error: "The selected caller ID has no LiveKit outbound trunk yet. Re-save the number in Phone Numbers to provision it." },
         { status: 422 }
       );
     }
@@ -336,8 +290,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 8. Record call in MongoDB
-    const initialCallId = `plivo:out:${randomUUID()}`;
+    // 8. Record call in MongoDB (provider livekit; room is the provider leg).
     let call: Awaited<ReturnType<typeof CallRepository.create>>;
     try {
       call = await CallRepository.create({
@@ -346,8 +299,8 @@ export async function POST(req: NextRequest) {
         agentVersionId: agent.currentVersionId,
         contactId: contact._id,
         phoneNumberId: outboundNumber?._id,
-        provider: "plivo",
-        providerCallId: initialCallId,
+        provider: "livekit",
+        providerCallId: roomNameForCall("pending"),
         idempotencyKey: idempotencyKey || undefined,
         direction: "outbound",
         fromNumber,
@@ -358,6 +311,10 @@ export async function POST(req: NextRequest) {
           ...metadata,
         },
       });
+      // Room maps 1:1 to the session; stamp it now for webhook linkage.
+      await CallRepository.transitionState(call._id, "QUEUED", {
+        providerCallId: roomNameForCall(call._id.toString()),
+      } as never).catch(() => null);
     } catch (err: unknown) {
       if (idempotencyKey && (err as { code?: number }).code === 11000) {
         const existing = await CallRepository.findByIdempotencyKey(
@@ -395,56 +352,69 @@ export async function POST(req: NextRequest) {
       idempotencyKey: `created:${call._id}`,
     });
 
-    // 10. Dial directly via Plivo REST API
-    const answerUrl = `${publicWebUrl}/api/webhooks/plivo/outbound-answer?call_id=${call._id}`;
-    const hangupUrl = `${publicWebUrl}/api/webhooks/plivo/status?call_id=${call._id}`;
-
-    const plivoStartedAt = performance.now();
-    const dialResult = await dialPlivoCall({
-      authId: plivoCreds.authId,
-      authToken: plivoCreds.authToken,
-      fromNumber,
-      toNumber: normalized,
-      answerUrl,
-      hangupUrl,
-      record: true,
-      recordUrl: `${publicWebUrl}/api/webhooks/plivo/recording?call_id=${call._id}`,
-      timeLimit: agent.config?.settings?.maxCallDuration || 900,
-    });
-
-    if (!dialResult.success) {
-      console.error("[api/calls] Plivo dial failed:", dialResult.error);
+    // 10. Dial via LiveKit: room + AgentDispatch + SIP participant
+    // (outbound trunk -> Plivo termination). Callee speaks first; the agent
+    // responds after first speech (no greet-first on dial-out).
+    const room = roomNameForCall(call._id.toString());
+    const livekitStartedAt = performance.now();
+    let dispatchId = "";
+    try {
+      const { AgentDispatchClient, SipClient } = await import("livekit-server-sdk") as unknown as {
+        AgentDispatchClient: new (u: string, k: string, s: string) => {
+          createDispatch: (req: unknown) => Promise<{ dispatchId?: string; id?: string }>;
+        };
+        SipClient: new (u: string, k: string, s: string) => {
+          createSipParticipant: (req: unknown) => Promise<unknown>;
+        };
+      };
+      const url = process.env.LIVEKIT_URL || "";
+      const key = process.env.LIVEKIT_API_KEY || "";
+      const secret = process.env.LIVEKIT_API_SECRET || "";
+      const dispatchClient = new AgentDispatchClient(url, key, secret);
+      const dispatch = await dispatchClient.createDispatch({
+        agentName: LIVEKIT_AGENT_NAME,
+        room,
+        metadata: buildDispatchMetadata({
+          orgId,
+          agentId: agent._id.toString(),
+          callId: call._id.toString(),
+          direction: "outbound",
+          room,
+        }),
+      });
+      dispatchId = String(dispatch?.dispatchId || dispatch?.id || "");
+      const sip = new SipClient(url, key, secret);
+      await sip.createSipParticipant({
+        roomName: room,
+        sipTrunkId: outboundTrunkId,
+        sipCallTo: normalized,
+        participantIdentity: normalized,
+        sipNumber: fromNumber,
+        waitUntilAnswered: true,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "LiveKit dial failed";
+      console.error("[api/calls] LiveKit dial failed:", message);
       await CallRepository.transitionState(call._id, "FAILED");
       await CallRepository.addEvent({
         callId: call._id,
         organizationId: orgId,
         type: "call.dial_failed",
-        data: { reason: dialResult.error },
+        data: { reason: message },
         idempotencyKey: `dial-failed:${call._id}`,
       });
-      let errorMessage = `Plivo outbound dial failed: ${dialResult.error}`;
-      if (dialResult.error?.toLowerCase().includes("answer_url")) {
-        errorMessage = `Plivo outbound dial failed: answer_url is not valid. The configured PUBLIC_WEB_URL (${publicWebUrl}) is not reachable by Plivo or the tunnel has expired. Please restart your Cloudflare/ngrok tunnel and update PUBLIC_WEB_URL in .env.local.`;
-      }
-      return NextResponse.json(
-        { error: errorMessage },
-        { status: 422 }
-      );
+      return NextResponse.json({ error: `LiveKit outbound dial failed: ${message}` }, { status: 422 });
     }
 
-    // Call successfully accepted by Plivo
-    const activeProviderCallId = dialResult.requestUuid || initialCallId;
+    // Call accepted: dispatch owns the room now.
     await CallRepository.transitionState(call._id, "RINGING", {
-      providerCallId: activeProviderCallId,
+      providerCallId: room,
     });
     await CallRepository.addEvent({
       callId: call._id,
       organizationId: orgId,
       type: "call.dispatched",
-      data: {
-        provider_call_id: activeProviderCallId,
-        api_id: dialResult.apiId,
-      },
+      data: { provider_call_id: room, dispatch_id: dispatchId },
       idempotencyKey: `dispatched:${call._id}`,
     });
 
@@ -453,7 +423,7 @@ export async function POST(req: NextRequest) {
       route: "/api/calls",
       stage: "response_ready",
       durationMs: Math.round(performance.now() - requestStartedAt),
-      plivoDialMs: Math.round(performance.now() - plivoStartedAt),
+      livekitDialMs: Math.round(performance.now() - livekitStartedAt),
       outcome: "accepted",
     }));
 
@@ -465,7 +435,7 @@ export async function POST(req: NextRequest) {
           status: "ringing",
           to_number: call.toNumber,
           from_number: fromNumber,
-          provider_call_id: activeProviderCallId,
+          provider_call_id: room,
           enqueued: true,
         },
       },

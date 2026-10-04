@@ -245,7 +245,11 @@ class _FakePipe:
 
 def make_config(**overrides):
     base = dict(
-        plivo_auth_id="MA111", plivo_auth_token="tok",
+        livekit_url="wss://test.livekit.cloud",
+        livekit_api_key="test-key",
+        livekit_api_secret="test-secret",
+        livekit_agent_name="sigulon-voice-agent",
+        plivo_auth_id="", plivo_auth_token="",
         encryption_secret="",
         public_web_url="https://web.test",
         poll_timeout_seconds=5, retry_batch_size=50,
@@ -268,7 +272,7 @@ def seed_db():
                           "language": "te", "voice_id": "v1"}],
         "phone_numbers": [{"id": "n1", "org_id": "o1", "agent_id": "a1",
                            "phone_number": "+911234567890", "provider": "plivo",
-                           "direction": "both"}],
+                           "direction": "both", "lk_trunk_id": "trunk-out-1"}],
         "contacts": [{"id": "ct1", "org_id": "o1", "phone_number": "98765 43210",
                       "normalized_phone": "+919876543210", "do_not_call": False}],
         "campaign_contacts": [{"campaign_id": "c1", "contact_id": "ct1",
@@ -363,22 +367,27 @@ class TestQueueing(unittest.TestCase):
 
 
 class TestDialer(unittest.TestCase):
-    def test_urls_and_transient(self):
+    def test_room_dispatch_and_transient(self):
+        import dialer as D
+        import json
+
+        self.assertEqual(D.room_name_for_call("call-1"), "sigulon-call-call-1")
+        meta = json.loads(D.dispatch_metadata("o1", "a1", "c1"))
+        self.assertEqual(meta, {"orgId": "o1", "agentId": "a1", "callId": "c1",
+                                "direction": "outbound", "room": "sigulon-call-c1"})
+        self.assertTrue(D.is_transient(ConnectionError("connection reset")))
+        self.assertTrue(D.is_transient(RuntimeError("LiveKit dial HTTP 503")))
+        self.assertFalse(D.is_transient(RuntimeError("unauthorized")))
+
+    def test_legacy_plivo_path_removed(self):
         import dialer as D
 
-        self.assertEqual(
-            D.answer_url_for_call("https://web.test", "call-1"),
-            "https://web.test/api/webhooks/plivo/outbound-answer?call_id=call-1",
-        )
-        self.assertEqual(D.hangup_url("https://web.test/"),
-                         "https://web.test/api/webhooks/plivo/status")
-        self.assertEqual(
-            D.hangup_url("https://web.test", "call/a"),
-            "https://web.test/api/webhooks/plivo/status?call_id=call%2Fa",
-        )
-        self.assertTrue(D.is_transient(ConnectionError("connection reset")))
-        self.assertTrue(D.is_transient(RuntimeError("Plivo dial HTTP 503")))
-        self.assertFalse(D.is_transient(RuntimeError("unauthorized")))
+        with self.assertRaises(ValueError):
+            D.dial(room="r", sip_trunk_id="t", sip_call_to="+1",
+                   sip_from_number="+2", livekit_url="u", api_key="k",
+                   api_secret="s", auth_id="MA1", auth_token="t")
+        with self.assertRaises(RuntimeError):
+            D.answer_url_for_call("https://web.test", "call-1")
 
 
 class TestRetryDelay(unittest.TestCase):
@@ -400,48 +409,62 @@ class TestProcessJob(unittest.TestCase):
         import worker as W
 
         ctx = make_ctx()
-        with patch("dialer.dial", return_value={"request_uuid": "req-1"}) as d:
+        with patch("dialer.dial", return_value={"room": "sigulon-call-x", "dispatch_id": "d-1"}) as d:
             disp = W.process_job(ctx, {"campaign_id": "c1", "contact_id": "ct1",
                                        "org_id": "o1", "attempt": 0})
         self.assertEqual(disp, "dialed")
         d.assert_called_once()
         _, kwargs = d.call_args
-        self.assertEqual(kwargs["to_number"], "+919876543210")
-        self.assertIn("call_id=", kwargs["answer_url"])
+        self.assertEqual(kwargs["sip_call_to"], "+919876543210")
+        # Caller ID is the org-owned number; dispatch carries outbound metadata.
+        self.assertEqual(kwargs["sip_from_number"], "+911234567890")
+        self.assertEqual(kwargs["sip_trunk_id"], "trunk-out-1")
+        self.assertIn("sigulon-call-", kwargs["room"])
         calls = ctx.database.table("calls").rows
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0]["status"], "dialing")
-        self.assertTrue(calls[0]["cartesia_call_id"].startswith("plivo:out:"))
         cc = self._cc(ctx)
         self.assertEqual(cc["call_status"], "dialing")
         self.assertEqual(cc["attempt_count"], 1)
 
-    def test_workspace_plivo_credentials_override_platform_fallback(self):
+    def test_org_number_trunk_used_for_sip_caller_id(self):
         import worker as W
-        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-        db = seed_db()
-        secret = "a-unique-test-secret-that-is-longer-than-32-characters"
-        iv = bytes(range(16))
-        key = hashlib.sha256(secret.encode("utf-8")).digest()
-        plaintext = json.dumps({"authId": "MAworkspace", "authToken": "workspace-token"}).encode("utf-8")
-        encrypted_with_tag = AESGCM(key).encrypt(iv, plaintext, None)
-        db["provider_accounts"] = [{
-            "org_id": "o1", "provider": "plivo", "status": "active",
-            "credentials_encrypted": f"{encrypted_with_tag[:-16].hex()}:{encrypted_with_tag[-16:].hex()}",
-            "encryption_iv": iv.hex(),
-        }]
-        ctx = make_ctx(db, encryption_secret=secret)
-
-        with patch("dialer.dial", return_value={"request_uuid": "req-byoc"}) as dial:
+        ctx = make_ctx()
+        with patch("dialer.dial", return_value={"room": "sigulon-call-x", "dispatch_id": "d-byoc"}) as dial:
             disposition = W.process_job(ctx, {
                 "campaign_id": "c1", "contact_id": "ct1", "org_id": "o1", "attempt": 0,
             })
 
         self.assertEqual(disposition, "dialed")
         _, kwargs = dial.call_args
-        self.assertEqual(kwargs["auth_id"], "MAworkspace")
-        self.assertEqual(kwargs["auth_token"], "workspace-token")
+        # Caller ID is the org-owned number; outbound trunk from the number row.
+        self.assertEqual(kwargs["sip_from_number"], "+911234567890")
+        self.assertEqual(kwargs["sip_trunk_id"], "trunk-out-1")
+
+    def test_missing_outbound_trunk_fails_without_dial(self):
+        import worker as W
+
+        db = seed_db()
+        db["phone_numbers"][0].pop("lk_trunk_id", None)
+        ctx = make_ctx(db)
+        with patch("dialer.dial") as d:
+            disp = W.process_job(ctx, {"campaign_id": "c1", "contact_id": "ct1",
+                                       "org_id": "o1", "attempt": 0})
+        self.assertEqual(disp, "terminal:failed")
+        d.assert_not_called()
+
+    def test_no_consent_skips_without_dial(self):
+        import worker as W
+
+        db = seed_db()
+        db["campaign_contacts"][0]["consent"] = False
+        ctx = make_ctx(db)
+        with patch("dialer.dial") as d:
+            disp = W.process_job(ctx, {"campaign_id": "c1", "contact_id": "ct1",
+                                       "org_id": "o1", "attempt": 0})
+        self.assertEqual(disp, "terminal:skipped")
+        d.assert_not_called()
 
     def test_dnc_terminalizes(self):
         import worker as W
@@ -484,7 +507,7 @@ class TestProcessJob(unittest.TestCase):
         import worker as W
 
         ctx = make_ctx()
-        with patch("dialer.dial", side_effect=RuntimeError("Plivo dial HTTP 500")):
+        with patch("dialer.dial", side_effect=RuntimeError("LiveKit dial HTTP 500")):
             disp = W.process_job(ctx, {"campaign_id": "c1", "contact_id": "ct1",
                                        "org_id": "o1", "attempt": 0})
         self.assertEqual(disp, "retry_scheduled")
@@ -493,7 +516,7 @@ class TestProcessJob(unittest.TestCase):
         self.assertEqual(cc["attempt_count"], 1)
         self.assertIsNotNone(cc["next_attempt_at"])
         # Second failure exhausts (max 2) → terminal.
-        with patch("dialer.dial", side_effect=RuntimeError("Plivo dial HTTP 500")):
+        with patch("dialer.dial", side_effect=RuntimeError("LiveKit dial HTTP 500")):
             disp = W.process_job(ctx, {"campaign_id": "c1", "contact_id": "ct1",
                                        "org_id": "o1", "attempt": 0})
         self.assertEqual(disp, "terminal:failed")
@@ -537,7 +560,7 @@ class TestProcessJob(unittest.TestCase):
         # Single jobs have no campaign_contacts row.
         db["campaign_contacts"] = []
         ctx = make_ctx(db)
-        with patch("dialer.dial", return_value={"request_uuid": "req-9"}):
+        with patch("dialer.dial", return_value={"room": "sigulon-call-call-9", "dispatch_id": "d-9"}):
             disp = W.process_job(ctx, {"campaign_id": None, "contact_id": "ct1",
                                        "org_id": "o1", "attempt": 0,
                                        "single_call_id": "call-9", "max_attempts": 1})

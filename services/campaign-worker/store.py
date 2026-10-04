@@ -72,7 +72,7 @@ def get_agent(client: Any, agent_id: str) -> Optional[dict]:
 
 
 def get_outbound_number(client: Any, org_id: str) -> Optional[dict]:
-    """First outbound-capable number, Plivo rows preferred."""
+    """First outbound-capable number with its LiveKit trunk (org-owned caller ID)."""
     if _is_mock(client):
         try:
             rows = (
@@ -101,6 +101,8 @@ def get_outbound_number(client: Any, org_id: str) -> Optional[dict]:
         "id": str(best["_id"]),
         "phone_number": best.get("phoneNumber"),
         "provider": best.get("provider", "plivo"),
+        "lk_trunk_id": best.get("lkTrunkId") or best.get("lk_trunk_id") or "",
+        "region": best.get("region") or ("in-mumbai" if str(best.get("phoneNumber") or "").startswith("+91") else "us-east"),
     }
 
 
@@ -181,6 +183,7 @@ def get_campaign_contact(
         "contact_id": contact_id,
         "call_status": doc.get("callStatus"),
         "attempt_count": doc.get("attemptCount", 0),
+        "consent": doc.get("consent", doc.get("Consent", True)),
         "last_attempt_at": str(doc.get("lastAttemptAt") or ""),
         "next_attempt_at": str(doc.get("nextAttemptAt") or ""),
     }
@@ -221,7 +224,8 @@ def insert_call(client: Any, row: dict[str, Any]) -> Optional[str]:
         "status": row.get("status", "QUEUED").upper(),
         "toNumber": row.get("to_number", ""),
         "fromNumber": row.get("from_number", ""),
-        "provider": row.get("provider", "plivo"),
+        "provider": row.get("provider", "livekit"),
+        "providerCallId": row.get("provider_call_id") or row.get("cartesia_call_id") or "",
         "durationSeconds": 0,
         "costCredits": 0,
         "createdAt": datetime.now(timezone.utc),

@@ -5,10 +5,11 @@
 | Component | Deployment input |
 |---|---|
 | Next.js web/control plane | root `Dockerfile`, Cloud Run |
-| Voice runtime | `voice-runtime/Dockerfile`, Cloud Run |
+| Voice worker (`sigulon-voice-agent`) | `voice-runtime/Dockerfile`, GKE + KEDA (CPU/dispatch, outbound-only, no ingress) |
 | Campaign worker | `services/campaign-worker/Dockerfile`, GKE Autopilot + KEDA |
 | Durable data | MongoDB Atlas or a production MongoDB replica set |
 | Queue/cache | Redis (Upstash, Memorystore, or equivalent) |
+| Media/telephone | LiveKit Cloud (SIP trunks, rooms, Egress → GCS); Plivo SIP trunks |
 
 ## Required configuration
 
@@ -34,33 +35,35 @@ email was sent without this configuration. Local development logs the link.
 ## Google Cloud production path
 
 Use the deployment project in [`deploy/gcp`](../deploy/gcp). It runs the web
-control plane and WebSocket voice runtime on Cloud Run, and the continuous
-Redis campaign consumer on GKE Autopilot. KEDA scales campaign-worker Pods from
-the Redis queue depth, which is the required signal for outbound campaign
-autoscaling.
+control plane on Cloud Run and both workers (voice + campaign) on GKE
+Autopilot. KEDA scales the campaign worker from the Redis queue depth and
+the voice worker from CPU (proxy for LiveKit concurrent dispatch) — neither
+depends on HTTP RPS.
 
-The worker must not be deployed as a Cloud Run Service: it is a non-HTTP,
-long-running `BRPOP` process. Cloud Run Services must expose an HTTP listener;
-running it on GKE with KEDA keeps its existing queue and retry semantics.
+Both workers must not be deployed as Cloud Run Services: they are non-HTTP,
+long-running processes (Agents SDK registration / Redis `BRPOP`). Running
+them on GKE with KEDA keeps their existing dispatch and retry semantics.
 
-The Cloud Run voice runtime has min scale 1, max scale 50, 3600-second request
-timeout, always-allocated CPU, and one telephone WebSocket per container. The
-web service scales from 1 to 20 instances. Both use Direct VPC egress for a
+The voice worker runs `python agent.py start` as a single always-on process
+(min 1, max 20 via KEDA CPU 60%), 2 vCPU / 2 GiB. The web service scales
+from 1 to 20 instances on HTTP traffic. Web uses Direct VPC egress for a
 private Memorystore Redis connection.
 
 See [`deploy/gcp/README.md`](../deploy/gcp/README.md) for the required Secret
 Manager names, VPC setup, one-command PowerShell deployment, KEDA behavior,
 and Plivo production wiring.
 
-## Plivo
+## Plivo SIP + LiveKit
 
 - Register the actual Plivo number in the dashboard; this application does
   not purchase or provision carrier numbers.
-- Configure its answer URL as
-  `https://<web-host>/api/webhooks/plivo/inbound` and its hangup URL as
-  `https://<web-host>/api/webhooks/plivo/status`, both using POST.
-- Configure public `VOICE_RUNTIME_URL` and `PUBLIC_WEB_URL` values. Plivo
-  must be able to reach both hosts over TLS.
+- Saving a number provisions a LiveKit inbound trunk (metadata
+  `{orgId, agentId}`); point the number's Plivo Zentrunk SIP URI at
+  `<project-sip-subdomain>.sip.livekit.cloud;transport=tcp`.
+- LiveKit webhooks (`/api/webhooks/livekit`, verified with
+  `LIVEKIT_WEBHOOK_SECRET`) drive Call lifecycle, billing, and recordings
+  (Egress → GCS). The Plivo `status` webhook stays ONLY for 2-week dual-run
+  reconciliation (`PLIVO_DUAL_RUN`), then is deleted.
 
 ## Local development
 
@@ -72,5 +75,5 @@ docker compose up --build
 npm run dev
 ```
 
-Use a tunnel for the web and runtime URLs before testing Plivo callbacks.
+Use a LiveKit Cloud project + tunnel for the web URL before testing.
 Do not point `db:init` or `db:seed` at production MongoDB.

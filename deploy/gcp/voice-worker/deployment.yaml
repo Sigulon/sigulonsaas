@@ -1,0 +1,67 @@
+# Sigulon voice worker (LiveKit Agents 1.x, `python agent.py start`).
+# Outbound-only: no HTTP ingress/service. KEDA (scaledobject.yaml) owns the
+# replica count off CPU + LiveKit concurrent dispatch; do not add an HPA.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sigulon-voice-worker
+  namespace: sigulon
+  labels:
+    app.kubernetes.io/name: sigulon-voice-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sigulon-voice-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sigulon-voice-worker
+    spec:
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: __VOICE_WORKER_IMAGE__
+          imagePullPolicy: IfNotPresent
+          command: ["python", "agent.py", "start"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: sigulon-voice-worker-config
+          env:
+            - name: LIVEKIT_URL
+              valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: LIVEKIT_URL } }
+            - name: LIVEKIT_API_KEY
+              valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: LIVEKIT_API_KEY } }
+            - name: LIVEKIT_API_SECRET
+              valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: LIVEKIT_API_SECRET } }
+            - name: CARTESIA_API_KEY
+              valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: CARTESIA_API_KEY } }
+            - name: DEEPGRAM_API_KEY
+              valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: DEEPGRAM_API_KEY } }
+            - name: OPENROUTER_API_KEY
+              valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: OPENROUTER_API_KEY } }
+            - name: MONGODB_URI
+              valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: MONGODB_URI } }
+            - name: REDIS_URL
+              valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: REDIS_URL } }
+            - name: INTERNAL_API_SECRET
+              valueFrom: { secretKeyRef: { name: sigulon-voice-worker-secrets, key: INTERNAL_API_SECRET } }
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi

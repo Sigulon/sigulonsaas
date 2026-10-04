@@ -47,6 +47,7 @@ export interface VoiceAgent {
   enabled_tools?: string[];
   stt_provider?: "cartesia";
   settings?: Record<string, unknown>;
+  description?: string | null;
   /** Generated bundle v2; it is preserved through call config pre-warm. */
   bundle?: Record<string, unknown> | null;
   created_at: string;

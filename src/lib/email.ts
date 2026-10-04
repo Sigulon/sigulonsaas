@@ -101,3 +101,33 @@ export async function sendTeamInviteEmail(input: {
     html: `<p>You've been invited to join <strong>${organizationName}</strong> as ${role}.</p><p><a href="${escapeHtml(url)}">Accept invitation</a></p><p>This link expires in seven days.</p>`,
   });
 }
+
+/**
+ * Post-call owner notification (LiveKit path).
+ *
+ * The voice worker POSTs transcript+summary to
+ * `/api/internal/calls/postcall`; this fan-out emails the org owner.
+ * WhatsApp fan-out (if configured) hooks in here — same payload.
+ * Best-effort: resolves "skipped" when no owner email is known.
+ */
+export async function sendCallSummaryNotification(input: {
+  callId: string;
+  organizationId: string;
+  summary: string;
+  outcome: string;
+  durationSeconds: number;
+  ownerEmail?: string;
+}): Promise<"sent" | "development" | "skipped"> {
+  const to = (input.ownerEmail || process.env.OWNER_NOTIFY_EMAIL || "").trim();
+  if (!to) {
+    console.info(`[email] postcall summary for call ${input.callId} (outcome=${input.outcome}): no owner email, skipped`);
+    return "skipped";
+  }
+  const mins = Math.max(1, Math.ceil((input.durationSeconds || 0) / 60));
+  return sendEmail({
+    to,
+    subject: `Call summary: ${input.outcome} (${mins} min)`,
+    text: `Call ${input.callId}\nOutcome: ${input.outcome}\nDuration: ${mins} min\n\nSummary:\n${input.summary || "(no summary)"}`,
+    html: `<p>Call <code>${escapeHtml(input.callId)}</code> — outcome <strong>${escapeHtml(input.outcome)}</strong> (${mins} min).</p><p>${escapeHtml(input.summary || "(no summary)")}</p>`,
+  });
+}

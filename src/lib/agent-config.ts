@@ -12,7 +12,7 @@ import {
  * the Next.js control plane and the Python voice runtime.
  *
  * The voice runtime caches exactly this shape in Redis under
- * `callConfigCacheKey(callId)` and builds its Pipecat pipeline from it.
+ * `callConfigCacheKey(callId)` and builds its voice session from it.
  * Any field added here must also be added to the runtime's Pydantic model
  * (`voice-runtime/config.py` → `to_canonical` / `from_canonical`).
  */

@@ -15,7 +15,7 @@ export class AgentRepository {
     if (options?.status) query.status = options.status;
     return AgentModel.find(query)
       .select([
-        "_id", "organizationId", "name", "status", "createdAt", "updatedAt",
+        "_id", "organizationId", "name", "status", "description", "bundle", "createdAt", "updatedAt",
         "config.identity.language", "config.instructions.systemPrompt", "config.instructions.greeting",
         "config.voice.voiceId", "config.intelligence.provider", "config.intelligence.model",
         "config.speech.sttProvider", "config.tools.enabledTools",
@@ -53,6 +53,7 @@ export class AgentRepository {
     organizationId: string | mongoose.Types.ObjectId;
     name: string;
     config: CanonicalAgentConfig;
+    description?: string | null;
     specification?: Record<string, unknown>;
     bundle?: Record<string, unknown>;
     status?: "draft" | "active" | "paused";
@@ -62,6 +63,7 @@ export class AgentRepository {
       organizationId: data.organizationId,
       name: data.name.trim(),
       config: data.config,
+      description: data.description ?? null,
       specification: data.specification,
       bundle: data.bundle,
       status: data.status || "draft",
@@ -75,6 +77,7 @@ export class AgentRepository {
     updates: {
       name?: string;
       config?: Partial<CanonicalAgentConfig>;
+      description?: string | null;
       specification?: Record<string, unknown>;
       bundle?: Record<string, unknown>;
       status?: "draft" | "active" | "paused";
@@ -90,6 +93,10 @@ export class AgentRepository {
 
     if (updates.name) agent.name = updates.name.trim();
     if (updates.status) agent.status = updates.status;
+    if (updates.description !== undefined) {
+      agent.description = updates.description;
+      agent.markModified("description");
+    }
     if (updates.specification !== undefined) {
       agent.specification = updates.specification;
       agent.markModified("specification");

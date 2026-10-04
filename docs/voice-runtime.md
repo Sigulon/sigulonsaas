@@ -1,64 +1,72 @@
-# Voice runtime
+# Voice runtime (LiveKit Agents worker)
 
-`voice-runtime/` — FastAPI + Pipecat. One deployment serves all tenants;
-every call gets a dedicated pipeline built from its `AgentConfig`.
+`voice-runtime/` — LiveKit Agents 1.x worker (`agent.py`, `python agent.py start`).
+One deployment serves all tenants; every LiveKit room gets a dedicated
+`AgentSession` built from its `AgentConfig`. Media NEVER touches our servers —
+LiveKit Cloud carries it; the worker only sees frames via the Agents SDK.
 
-## Endpoints
+```
+INBOUND:
+  Caller → Plivo number → Plivo inbound Zentrunk (SIP)
+    → <project-sip-subdomain>.sip.livekit.cloud
+    → LiveKit Cloud inbound trunk (metadata {orgId, agentId})
+    → room (sigulon-call-{id}) + SIP participant
+    → dispatch rule → worker (job metadata {orgId, agentId})
+    → AgentSession (STT→LLM→TTS) joins room → greets (config greeting)
 
-| Method + path | Auth | Purpose |
-|---|---|---|
-| `GET /healthz` | none | Liveness |
-| `GET /readyz` | none | Redis / MongoDB / provider-key checks (200 ok, 503 degraded) + metrics |
-| `GET /metrics` | none | Prometheus counters (per-pod) |
-| `WS /voice-runtime/{call_id}[?to_number=&from_number=]` | config-gated | Plivo audio stream (mulaw/8kHz JSON) |
-| `POST /plivo/status-callback` | none | Stream audit complement (WS close is authoritative) |
-| `POST /internal/finalize-call` | bearer | Idempotent finalize (control plane / worker) |
-| `GET /internal/session/{call_id}` | bearer | Live session inspection |
+OUTBOUND (campaign / single-dial):
+  campaign-worker → LiveKit API: create room
+    + CreateAgentDispatch(agent sigulon-voice-agent, metadata {orgId, agentId, direction: outbound})
+    + CreateSIPParticipant(outbound trunk → Plivo termination → callee)
+    → callee speaks FIRST → agent responds (never greet-first on dial-out)
+```
 
-## Per-call flow
+## Session build (`agent.py`)
 
-1. Accept WS → `load_agent_config` (Redis `sigulon:call:{id}:config`,
-   else MongoDB `calls → agents → organizations`, re-cached; else
-   `phone_numbers` fallback when `?to_number=` is present).
-2. Concurrency gate (`acquire_concurrency_slot`, plan limit).
-3. `VoiceSession` create + 30s heartbeats; billing reserve ping (best-effort).
-4. `build_call_pipeline` (allow-listed providers only — anything else fails
-   fast, never substitutes): Silero VAD → STT → OpenRouter Gemini 2.5 Flash (+ tools) →
-   Cartesia TTS → Plivo serializer (barge-in via `clearAudio`).
-5. Greet (inbound, or outbound with an introduction) and run to hangup,
-   error, or `max_call_seconds`.
-6. `finally`: snapshot transcript → OpenRouter Gemini 2.5 Flash summary/disposition (best-effort)
-   → idempotent `finalize_call` (slot release + `calls` update + `call_events`
-   audit + session delete).
+1. Parse `ctx.job.metadata` JSON `{orgId, agentId}` (+ room metadata fallback);
+   `load_agent_config_for_job` (Redis 60s → MongoDB source of truth).
+   Room name maps 1:1 to the session key (`sigulon:call:{room}:config`).
+2. Concurrency gate (`acquire_concurrency_slot`, plan limit, fail-closed).
+3. Billing reserve ping (best-effort; zero-balance per `on_no_balance`).
+4. `AgentSession` (allow-listed models only — anything else fails fast):
+   - STT: `inference.STT("deepgram/nova-3", language)` (Hinglish → `"multi"`);
+     AssemblyAI fallback ONLY on provider error (never dual-run)
+   - LLM: `inference.LLM("google/gemma-4-31b-it")` (max ~2 sentences);
+     OpenRouter `google/gemini-2.5-flash` fallback ONLY on error
+   - TTS: `cartesia.TTS(model="sonic-3", voice=config.voice_id)` —
+     voice UUID ALWAYS explicit from config (never default)
+   - VAD: `silero.VAD.load()`; turn detection: `MultilingualModel`
+   - `allow_interruptions=True`; latency/observability hooks attached
+5. Tools from `enabled_tools` (`tools/`, `@function_tool`, org-scoped).
+6. INBOUND: `generate_reply(greeting)` on participant join.
+   OUTBOUND: wait for callee speech — never greet first.
+7. On end: transcript event snapshot → LLM summary/outcome →
+   POST control API (`/api/internal/calls/postcall`, owner WhatsApp/email
+   fan-out) → settle credits (actual duration) → release slot.
 
 ## Providers (`providers/`)
 
-The pipeline imports factories, never vendor SDKs — a new vendor is one
-factory branch. STT: Cartesia (`ink-2` for English / `ink-whisper` for other
-languages). LLM: Gemini 2.5 Flash via OpenRouter. TTS: Cartesia Sonic (speed clamped
-0.6–1.5). Telephony: answer-XML builder + REST hangup/dial/transfer with
-bounded retry (`providers/errors.py`: transient/permanent + backoff).
+Descriptors, never vendor SDKs in `agent.py` — a new model is one branch.
+STT: Deepgram `nova-3` via Inference gateway (`language.py` maps
+en/hi/hinglish/ta/te/…). LLM: Gemma 4 31B via Inference, OpenRouter
+fallback. TTS: Cartesia Sonic 3 (speed clamped 0.6–1.5). Retries:
+`providers/errors.py` (transient/permanent + backoff; Cancelled never masked).
 
-## Tools (`tools/`)
+## Recordings
 
-`check_availability`, `book_appointment` (real `appointments` rows),
-`pricing_lookup` (agent `settings.pricing`), `create_lead` (contacts
-upsert), `transfer_call` (Plivo Transfer to `settings.transfer_number`).
-Only names in the agent's `enabled_tools` are advertised. All queries are
-tenant-scoped via `CallResources`.
+Runtime never touches recording files. LiveKit Egress records the audio
+track → GCS (`sigulon-recordings-<env>`); the control plane marks the Call
+from the `egress_ended` webhook (`Call.recording_url`).
 
-## Contract with the web plane
+## Env
 
-- Redis key `sigulon:call:{id}:config` holds the canonical agent config
-  (`src/lib/agent-config.ts` ↔ `AgentConfig.to_canonical/from_canonical`,
-  no secrets).
-- Stream URL `wss://<host>/voice-runtime/{calls.id}`; Plivo `streamId` /
-  `callId` are learned from the `start` event.
-- Env: see `voice-runtime/.env.example` (all vars documented there).
+See `voice-runtime/.env.example`: `LIVEKIT_URL/API_KEY/API_SECRET/`
+`WEBHOOK_SECRET/AGENT_NAME`, `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`,
+`OPENROUTER_API_KEY` (fallback), `GCS_RECORDINGS_BUCKET`, Mongo/Redis,
+`INTERNAL_API_*`. Validate with `require_livekit_env()`.
 
-## Scaling
+## Tests
 
-Long-lived sockets: Cloud Run with min-instances ≥ 1, no CPU throttling,
-timeout 3600s (`deploy/gcp/cloudrun-runtime.yaml`). Replicas are stateless
-(Redis holds sessions); overshoot past one replica wants session
-affinity. Measure per-call CPU before sizing — see `docs/load-test-plan.md`.
+`py -m unittest discover -s tests` (from `voice-runtime/`):
+agent (metadata/tools/language/greeting/caps), tools (ported assertions),
+billing (reserve/settle/zero-balance), language stack, postcall.

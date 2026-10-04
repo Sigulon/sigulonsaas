@@ -2,12 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
 import { canCreateAndRun } from "@/lib/roles";
 import { AgentRepository } from "@sigulon/database";
-import {
-  generateAgentBundle,
-  compileBundleToSystemPrompt,
-  regenerateAgentBundle,
-} from "@/lib/agent-bundle-generator";
-import { AgentSpecification } from "@sigulon/agent-schema/schema";
+import { applyAiAssist } from "@/lib/agent-assist";
+import { generateAgentWithLlm } from "@/lib/agent-generation";
+import { compileBundleToSystemPrompt } from "@/lib/agent-bundle-generator";
+import { AgentBundle } from "@/lib/agent-bundle/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -30,56 +28,72 @@ export async function POST(
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 
-    let specToUse: AgentSpecification | null = null;
-    let instruction = "";
+    const body = await req.json().catch(() => ({}));
+    const { instruction, fromDescription, bundle: passedBundle } = body;
 
-    try {
-      const body = await req.json();
-      if (body.specification) {
-        specToUse = body.specification;
+    // 1. AI Assist mode: Modify bundle and return diff
+    if (instruction && typeof instruction === "string" && instruction.trim()) {
+      const currentBundle = (passedBundle || agent.bundle) as AgentBundle;
+      if (!currentBundle) {
+        return NextResponse.json(
+          { error: "No bundle found to apply AI assist to." },
+          { status: 400 }
+        );
       }
-      if (typeof body.instruction === "string") {
-        instruction = body.instruction;
-      }
-    } catch {
-      // Body is optional
+
+      const assistResult = await applyAiAssist(currentBundle, instruction.trim());
+      return NextResponse.json({
+        success: true,
+        type: "ai_assist",
+        modifiedBundle: assistResult.modifiedBundle,
+        diff: assistResult.diff,
+      });
     }
 
-    if (!specToUse) {
-      specToUse = (agent.specification as unknown as AgentSpecification) || null;
-    }
-
-    if (!specToUse) {
+    // 2. Full regeneration from description
+    const descriptionToUse = agent.description || body.description || agent.name;
+    if (!descriptionToUse) {
       return NextResponse.json(
-        { error: "No specification found for this agent to regenerate bundle from." },
+        { error: "No original description found to regenerate agent." },
         { status: 400 }
       );
     }
 
-    const { bundle, generatedBy } = instruction && agent.bundle
-      ? await regenerateAgentBundle(agent.bundle as unknown as import("@sigulon/agent-schema/schema").AgentBundle, instruction)
-      : await generateAgentBundle(specToUse);
-    const systemPrompt = compileBundleToSystemPrompt(bundle);
+    const currentBundle = agent.bundle as AgentBundle | null;
+    const mode = currentBundle?.exported_from?.mode || "bulk";
+    const language = currentBundle?.exported_from?.language || "te-IN";
+    const agentName = currentBundle?.exported_from?.employee_name || agent.name;
+
+    const genResult = await generateAgentWithLlm({
+      description: descriptionToUse,
+      mode,
+      language,
+      agentName,
+    });
+
+    const newBundle = genResult.bundle;
+    const systemPrompt = compileBundleToSystemPrompt(newBundle);
 
     const updated = await AgentRepository.updateDraft(id, orgId, {
-      specification: specToUse as unknown as Record<string, unknown>,
-      bundle: bundle as unknown as Record<string, unknown>,
+      bundle: newBundle as unknown as Record<string, unknown>,
       config: {
         ...agent.config,
         instructions: {
           ...agent.config.instructions,
           systemPrompt,
-          greeting: bundle.first_response,
+          greeting: newBundle.first_response,
         },
       },
     });
 
     return NextResponse.json({
+      success: true,
+      type: "regenerate_from_description",
       agent: updated,
-      bundle,
-      generatedBy,
+      bundle: newBundle,
     });
   } catch (err: unknown) {
+    console.error("[POST /api/agents/[id]/regenerate] Error:", err);
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
     const code = (err as NodeJS.ErrnoException).code;
     const status = code === "UNAUTHORIZED" ? 401 : code === "FORBIDDEN" ? 403 : 500;

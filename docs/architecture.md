@@ -9,41 +9,39 @@ Multi-tenant SaaS for real-time AI voice-calling agents targeting Indian SMBs.
              │                             │
         CONTROL PLANE                 VOICE PLANE
              │                             │
-    Next.js (src/)      Pipecat (voice-runtime)
+    Next.js (src/)         LiveKit Agents worker (voice-runtime/agent.py)
              │                             │
              ▼                             ▼
-        MongoDB                       Real-time calls
+        MongoDB                       LiveKit Cloud (media)
              │                             │
              ▼                    ┌────────┼────────┐
            Redis                  ▼        ▼        ▼
-             │                   STT        LLM                TTS
-             ▼                Cartesia   OpenRouter Gemini   Cartesia
-       Campaign Queue
+             │                   STT       LLM       TTS
+             ▼                Deepgram   Gemma 4   Cartesia
+       Campaign Queue          nova-3   31B (Inf)  Sonic 3
              │
              ▼
-     services/campaign-worker
+     services/campaign-worker (LiveKit dispatch + SIP dial)
              │
              ▼
-      Telephony (Plivo)
-             │
-             ▼
-          Customer
+      Plivo SIP trunks ──► LiveKit Cloud SIP ──► Customer
 ```
+
 
 ## Physical Repository Layout
 
 ```text
 sigulon/
 ├── src/                            # Next.js 16 Control Plane (App Router)
-├── voice-runtime/                  # Python + Pipecat Voice Plane
+├── voice-runtime/                  # Python LiveKit Agents worker (agent.py)
 ├── services/
-│   └── campaign-worker/            # Background Calling Worker
+│   └── campaign-worker/            # Background Calling Worker (LiveKit dial)
 ├── packages/
 │   ├── database/                     # Mongoose models and repositories
 │   ├── agent-schema/                 # Canonical agent schema & validation
 │   ├── shared-types/                 # Canonical call lifecycles, states, and types
 │   └── billing/                      # Pricing math & ledger operations
-├── deploy/                           # Canonical Cloud Run service definitions
+├── deploy/                           # Web (Cloud Run) + workers (GKE/KEDA)
 ├── docs/
 ├── .github/
 │   └── workflows/                    # GitHub Actions CI/CD workflows
@@ -56,20 +54,33 @@ sigulon/
 ## Call Execution Flow
 
 1. **Inbound Calls**:
-   - Customer calls carrier number.
-   - Telephony calls `POST /api/webhooks/plivo/inbound`.
-   - Control plane resolves `To` number to organization & active agent.
-   - Control plane inserts call record (`status: created`, `direction: inbound`), initializes `VoiceSession`, pre-warms canonical config in Redis.
-   - Returns answer XML with bidirectional `<Stream>` pointing to `wss://{VOICE_RUNTIME_URL}/voice-runtime/{call_id}`.
-   - Voice Runtime accepts WebSocket, dynamically constructs the pipeline (Cartesia STT, OpenRouter Gemini 2.5 Flash LLM, Cartesia TTS), and executes the call.
+   - Customer calls the Plivo number.
+   - Plivo inbound Zentrunk (SIP URI → `<project-sip-subdomain>.sip.livekit.cloud`)
+     routes to the LiveKit Cloud inbound trunk (per number, metadata `{orgId, agentId}`).
+   - LiveKit creates room `sigulon-call-{id}` + SIP participant; the dispatch
+     rule fires the voice worker (`sigulon-voice-agent`, job metadata `{orgId, agentId}`).
+   - Control plane `POST /api/webhooks/livekit` (`room_started`, verified with
+     `WebhookReceiver` + `WebhookEvent` idempotency) creates the Call and
+     reserves credits; the worker's `AgentSession` joins and greets.
+   - Deepgram nova-3 STT → Gemma 4 31B LLM (+ tools) → Cartesia Sonic 3 TTS.
 
 2. **Outbound Calls**:
-   - Dashboard API `POST /api/calls` creates a call record and enqueues a job into Redis `sigulon:campaign:queue`.
-   - Campaign Worker consumes job from queue, applies layered concurrency limits, re-verifies DNC, dials telephony (Plivo).
-   - Telephony rings customer; on answer, Plivo calls `POST /api/webhooks/plivo/outbound-answer`.
-   - Webhook bridges to Pipecat WebSocket `wss://{VOICE_RUNTIME_URL}/voice-runtime/{call_id}`.
+   - Dashboard `POST /api/calls` (single) or campaign-worker (batch) dials via
+     LiveKit API: create room + `CreateAgentDispatch` (metadata
+     `{orgId, agentId, direction: outbound}`) + `CreateSIPParticipant`
+     (org outbound trunk → Plivo termination → callee).
+   - DNC + `CampaignContact.consent` + pacing + retries enforced before dial;
+     caller ID is always an org-owned number.
+   - Callee speaks FIRST; the agent responds (never greet-first on dial-out).
+   - `room_finished` settles credits (actual duration, exactly-once
+     `UsageRecord`), mirrors campaign outcomes, enqueues postcall.
 
 3. **Lifecycle & Status Events**:
    - Canonical transitions: `CREATED -> QUEUED -> DIALING -> RINGING -> ANSWERED -> IN_PROGRESS -> COMPLETED`.
    - Failure branches: `FAILED`, `BUSY`, `NO_ANSWER`, `CANCELLED`.
    - Recorded persistently in `calls` and audited in `call_events` with unique deduplication IDs.
+   - `dispatch_failed` marks the Call failed + refunds the reservation.
+   - Recordings: LiveKit Egress → GCS (`sigulon-recordings-<env>`);
+     `egress_ended` sets `Call.recording_url`.
+   - Plivo `status` webhook stays ONLY for 2-week dual-run reconciliation
+     (`PLIVO_DUAL_RUN` flag), then is deleted.

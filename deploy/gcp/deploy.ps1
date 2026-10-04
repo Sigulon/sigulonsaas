@@ -152,39 +152,25 @@ try {
     Invoke-Gcloud @("builds", "submit", (Join-Path $repoRoot "services/campaign-worker"), "--tag=$workerImage", "--project=$ProjectId")
   }
 
-  # Deploy the web service once to obtain its HTTPS URL. It is immediately
-  # redeployed after the runtime URL is known, so no placeholder is retained.
-  $firstWeb = Render-Manifest "cloudrun-web.yaml" @{
+  # Deploy the web service (control plane + LiveKit webhooks). The voice
+  # worker is outbound-only GKE (no Cloud Run service, no ingress).
+  $webManifest = Render-Manifest "cloudrun-web.yaml" @{
     "__PROJECT_ID__" = $ProjectId
     "__WEB_IMAGE__" = $webImage
     "__WEB_URL__" = "https://web.invalid"
-    "__RUNTIME_URL__" = "https://runtime.invalid"
+    "__RECORDINGS_BUCKET__" = "sigulon-recordings-prod"
     "__NETWORK__" = $Network
     "__SUBNET__" = $Subnet
   }
-  Invoke-Gcloud @("run", "services", "replace", $firstWeb, "--region=$Region", "--project=$ProjectId", "--quiet")
+  Invoke-Gcloud @("run", "services", "replace", $webManifest, "--region=$Region", "--project=$ProjectId", "--quiet")
   Invoke-Gcloud @("run", "services", "add-iam-policy-binding", "sigulon-web", "--region=$Region", "--project=$ProjectId", "--member=allUsers", "--role=roles/run.invoker", "--quiet")
   $webUrl = Get-CloudRunUrl "sigulon-web"
-
-  $runtimeManifest = Render-Manifest "cloudrun-runtime.yaml" @{
-    "__PROJECT_ID__" = $ProjectId
-    "__RUNTIME_IMAGE__" = $runtimeImage
-    "__WEB_URL__" = $webUrl
-    "__NETWORK__" = $Network
-    "__SUBNET__" = $Subnet
-  }
-  Invoke-Gcloud @("run", "services", "replace", $runtimeManifest, "--region=$Region", "--project=$ProjectId", "--quiet")
-  # Plivo initiates the WebSocket, so Cloud Run IAM cannot require an identity
-  # token here. The runtime rejects unknown calls and the webhooks verify Plivo
-  # signatures before opening a stream.
-  Invoke-Gcloud @("run", "services", "add-iam-policy-binding", "sigulon-voice-runtime", "--region=$Region", "--project=$ProjectId", "--member=allUsers", "--role=roles/run.invoker", "--quiet")
-  $runtimeUrl = Get-CloudRunUrl "sigulon-voice-runtime"
 
   $finalWeb = Render-Manifest "cloudrun-web.yaml" @{
     "__PROJECT_ID__" = $ProjectId
     "__WEB_IMAGE__" = $webImage
     "__WEB_URL__" = $webUrl
-    "__RUNTIME_URL__" = $runtimeUrl
+    "__RECORDINGS_BUCKET__" = "sigulon-recordings-prod"
     "__NETWORK__" = $Network
     "__SUBNET__" = $Subnet
   }
@@ -212,19 +198,23 @@ try {
       throw "The Kubernetes secret sigulon-worker-secrets is missing. Create it from worker/secret.example.yaml, outside this repository."
     }
 
-    $values = @{ "__WEB_URL__" = $webUrl; "__WORKER_IMAGE__" = $workerImage }
+    $values = @{ "__WEB_URL__" = $webUrl; "__WORKER_IMAGE__" = $workerImage; "__VOICE_WORKER_IMAGE__" = $runtimeImage }
     $workerConfig = Render-Manifest "worker\configmap.yaml" $values
     $workerDeployment = Render-Manifest "worker\deployment.yaml" $values
-    foreach ($manifest in @($workerConfig, $workerDeployment, (Join-Path $PSScriptRoot "worker\pdb.yaml"), (Join-Path $PSScriptRoot "worker\scaledobject.yaml"))) {
+    $voiceConfig = Render-Manifest "voice-worker\configmap.yaml" $values
+    $voiceDeployment = Render-Manifest "voice-worker\deployment.yaml" $values
+    foreach ($manifest in @($workerConfig, $workerDeployment, (Join-Path $PSScriptRoot "worker\pdb.yaml"), (Join-Path $PSScriptRoot "worker\scaledobject.yaml"), $voiceConfig, $voiceDeployment, (Join-Path $PSScriptRoot "voice-worker\scaledobject.yaml"))) {
       & kubectl apply -f $manifest
       if ($LASTEXITCODE -ne 0) { throw "Could not apply $manifest." }
     }
     & kubectl rollout status deployment/sigulon-campaign-worker --namespace sigulon --timeout=180s
     if ($LASTEXITCODE -ne 0) { throw "Campaign worker did not become ready." }
+    & kubectl rollout status deployment/sigulon-voice-worker --namespace sigulon --timeout=180s
+    if ($LASTEXITCODE -ne 0) { throw "Voice worker did not become ready." }
   }
 
   Write-Host "Sigulon web:     $webUrl"
-  Write-Host "Voice runtime:   $runtimeUrl"
+  Write-Host "Voice worker:    GKE (sigulon-voice-worker, agent sigulon-voice-agent, CPU autoscaling)"
   Write-Host "Campaign worker: GKE Autopilot + KEDA (queue autoscaling enabled)"
 }
 finally {

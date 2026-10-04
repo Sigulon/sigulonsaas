@@ -1,14 +1,19 @@
 # -*- coding: utf-8 -*-
-"""Per-call agent configuration for the Sigulon voice runtime.
+"""Per-call agent configuration for the Sigulon voice runtime (LiveKit).
 
-Configuration flow per call
-----------------------------
-1. ``load_agent_config(call_id)`` first checks Redis
-   (``sigulon:call:{call_id}:config``, JSON, short TTL). The Next.js control
-   plane is expected to pre-warm this key when it creates the call record and
-   generates the Plivo ``<Stream>`` answer XML.
-2. On a cache miss it queries MongoDB (the source of truth):
-   ``calls`` -> ``agents`` (+ ``organizations`` for the concurrency limit).
+Configuration flow per LiveKit dispatch job
+--------------------------------------------
+1. ``load_agent_config_for_job(metadata)`` parses job metadata
+   ``{orgId, agentId, callId?, direction?}`` and loads the agent row.
+2. ``load_agent_config(call_id)`` first checks Redis
+   (``sigulon:call:{call_id}:config``, JSON, short TTL) for the web
+   pre-warmed canonical payload, then MongoDB source of truth.
+3. Outbound/campaign jobs without a Call row yet fall back to
+   ``load_agent_config_by_org_agent(org_id, agent_id)``.
+
+Media never touches this process directly — LiveKit Cloud carries RTP/SIP;
+the worker only sees frames via the Agents SDK. Nothing legacy-rtc/Plivo-media
+specific lives here.
 
 Nothing tenant-specific is hardcoded here: prompts, voice IDs, languages,
 tool sets and limits all flow through :class:`AgentConfig`.
@@ -247,15 +252,16 @@ async def close_redis() -> None:
 
 
 class AgentConfig(BaseModel):
-    """Everything the pipeline needs to run one call. No tenant hardcoding."""
+    """Everything the LiveKit session needs to run one call. No tenant hardcoding."""
 
     # Identity / tenancy
-    call_id: str = Field(description="Sigulon calls.id (also the Plivo WS path id)")
+    call_id: str = Field(description="Sigulon calls.id (also the LiveKit room name)")
     agent_id: str = Field(description="Sigulon agents.id handling the call")
     tenant_id: str = Field(description="Sigulon organizations.id owning the agent")
     direction: Literal["inbound", "outbound"] = "inbound"
     from_number: Optional[str] = None
     to_number: Optional[str] = None
+    room_name: Optional[str] = Field(default=None, description="LiveKit room (1:1 with session)")
 
     # Conversation behaviour
     system_prompt: str = Field(
@@ -266,11 +272,13 @@ class AgentConfig(BaseModel):
         default=None,
         description="Greeting spoken first. None/empty on outbound = wait for callee.",
     )
-
-    # Fixed speech stack: Cartesia STT and Cartesia Sonic 3 TTS.
+    greeting_first: bool = Field(
+        default=True,
+        description="Inbound: greet first. Outbound dial-out: False, wait for callee speech.",
+    )
     language: str = Field(
         default="en",
-        description="BCP-47 / ISO-639-1 speech language, e.g. 'en', 'hi', 'te'.",
+        description="BCP-47 / ISO-639-1 speech language, e.g. 'en', 'hi', 'hinglish', 'te'.",
     )
     stt_provider: str = Field(
         default="cartesia",
@@ -318,6 +326,13 @@ class AgentConfig(BaseModel):
     )
     record_calls: bool = Field(default=True)
     bundle: Optional[dict[str, Any]] = Field(default=None, description="Standardized Agent Bundle v2")
+    on_no_balance: str = Field(
+        default="message",
+        description='Zero-balance behavior: "message" | "forward_number".',
+    )
+    forward_number: Optional[str] = Field(
+        default=None, description="Forward target when on_no_balance=forward_number."
+    )
 
     # Optional per-call BYOK overrides (decrypted by the control plane before
     # caching in Redis). None = fall back to the service-wide env vars.
@@ -326,17 +341,30 @@ class AgentConfig(BaseModel):
 
     @model_validator(mode="after")
     def normalize_voice_stack(self) -> "AgentConfig":
-        """Keep cached and legacy agent records on the supported voice stack."""
-        self.llm_provider = "openrouter"
-        self.llm_model = default_openrouter_model()
-        self.stt_provider = "cartesia"
-        self.stt_model = None
+        """Keep cached and legacy agent records on the supported voice stack.
+
+        LiveKit stack: Deepgram nova-3 STT via Inference gateway, Cartesia
+        Sonic 3 TTS (voice UUID always explicit), LiveKit Inference LLM with
+        OpenRouter fallback on error. Never default the voice.
+        """
+        self.llm_provider = self.llm_provider or "openrouter"
+        if not self.llm_model:
+            self.llm_model = default_openrouter_model()
+        self.stt_provider = "deepgram"
+        self.stt_model = self.stt_model or "nova-3"
         self.tts_provider = "cartesia"
         self.tts_model = CARTESIA_TTS_MODEL
+        if not (self.voice_id or "").strip():
+            raise ValueError("voice_id (Cartesia voice UUID) must be explicit from config.")
         if self.introduction:
             self.introduction = resolve_introduction(
                 self.introduction, lead_name=None, language=self.language
             )
+        # Outbound dial-out never greets first.
+        if self.direction == "outbound":
+            self.greeting_first = False
+        if self.on_no_balance not in ("message", "forward_number"):
+            self.on_no_balance = "message"
         return self
 
     def to_canonical(self) -> dict[str, Any]:
@@ -350,10 +378,12 @@ class AgentConfig(BaseModel):
             "organization_id": self.tenant_id,
             "call_id": self.call_id,
             "direction": self.direction,
+            "room_name": self.room_name or self.call_id,
             "identity": {"name": "", "company": ""},
             "instructions": {
                 "system_prompt": self.system_prompt,
                 "introduction": self.introduction,
+                "greeting_first": self.greeting_first,
                 "goals": list(self.goals),
                 "rules": list(self.rules),
             },
@@ -373,13 +403,15 @@ class AgentConfig(BaseModel):
                 "tts_provider": self.tts_provider,
                 "tts_model": self.tts_model,
             },
-            "telephony": {"provider": "plivo", "phone_number_id": None},
+            "telephony": {"provider": "livekit-sip", "phone_number_id": None},
             "tools": list(self.enabled_tools),
             "settings": {
                 "max_call_duration_seconds": self.max_call_seconds,
                 "max_concurrent_calls": self.max_concurrent_calls,
                 "silence_timeout_seconds": self.silence_timeout_seconds,
                 "record_calls": self.record_calls,
+                "on_no_balance": self.on_no_balance,
+                "forward_number": self.forward_number,
             },
             "bundle": self.bundle,
         }
@@ -397,36 +429,44 @@ class AgentConfig(BaseModel):
         except (TypeError, ValueError):
             limit = 5
         limit = max(1, min(50, limit))
+        direction = data.get("direction", "inbound")
+        greeting_first = instructions.get("greeting_first", data.get("greeting_first", True))
+        if direction == "outbound":
+            greeting_first = False
         return cls(
             call_id=data.get("call_id", ""),
             agent_id=data.get("id", ""),
             tenant_id=data.get("organization_id", ""),
-            direction=data.get("direction", "inbound"),
+            direction=direction,
+            room_name=data.get("room_name") or data.get("call_id", ""),
             system_prompt=instructions.get("system_prompt")
             or cls.model_fields["system_prompt"].default,
             introduction=resolve_introduction(
-                instructions.get("introduction"),
+                instructions.get("introduction") or instructions.get("greeting"),
                 lead_name=data.get("lead_name"),
                 language=voice.get("language", "en"),
             ),
+            greeting_first=bool(greeting_first),
             goals=list(instructions.get("goals", [])),
             rules=list(instructions.get("rules", [])),
             language=voice.get("language", "en"),
-            voice_id=voice.get("voice_id", ""),
+            voice_id=voice.get("voice_id", voice.get("voiceId", "")),
             voice_speed=float(voice.get("speed", 1.0)),
             llm_provider=intelligence.get("provider", "openrouter"),
             llm_model=intelligence.get("model") or default_openrouter_model(),
-            stt_provider="cartesia",
-            stt_model=None,
+            stt_provider=speech.get("stt_provider", speech.get("sttProvider", "deepgram")),
+            stt_model=speech.get("stt_model", speech.get("sttModel")) or "nova-3",
             tts_provider="cartesia",
             tts_model=CARTESIA_TTS_MODEL,
-            enabled_tools=list(data.get("tools", [])),
+            enabled_tools=list(data.get("tools", data.get("enabled_tools", []))),
             max_concurrent_calls=limit,
             max_call_seconds=int(
-                settings.get("max_call_duration_seconds", 1800)),
+                settings.get("max_call_duration_seconds", settings.get("maxCallDuration", 1800))),
             silence_timeout_seconds=int(
-                settings.get("silence_timeout_seconds", 20)),
-            record_calls=bool(settings.get("record_calls", True)),
+                settings.get("silence_timeout_seconds", settings.get("silenceTimeout", 20))),
+            record_calls=bool(settings.get("record_calls", settings.get("recordingEnabled", True))),
+            on_no_balance=settings.get("on_no_balance", settings.get("onNoBalance", "message")),
+            forward_number=settings.get("forward_number", settings.get("forwardNumber")),
             bundle=data.get("bundle") if isinstance(data.get("bundle"), dict) else None,
         )
 
@@ -618,28 +658,225 @@ async def _load_agent_config_from_mongodb(call_id: str) -> AgentConfig:
             agent_id=str(agent_doc["_id"]),
             tenant_id=org_id,
             direction=direction,
+            room_name=call_id,
             from_number=call.get("fromNumber"),
             to_number=call.get("toNumber"),
             system_prompt=instructions.get("systemPrompt") or instructions.get("system_prompt") or DEFAULT_SYSTEM_PROMPT,
             introduction=intro,
+            greeting_first=(direction != "outbound"),
             language=resolved_language,
             voice_id=voice.get("voiceId") or voice.get("voice_id") or "",
             voice_speed=float(voice.get("speed", 1.0)),
             llm_provider=intelligence.get("provider") or "openrouter",
             llm_model=intelligence.get("model") or default_openrouter_model(),
-            stt_provider=speech.get("sttProvider") or "cartesia",
-            stt_model=speech.get("sttModel"),
-            tts_provider=speech.get("ttsProvider") or "cartesia",
-            tts_model=speech.get("ttsModel") or voice.get("model") or CARTESIA_TTS_MODEL,
-            enabled_tools=list(tools.get("enabledTools", [])),
+            stt_provider="deepgram",
+            stt_model=speech.get("sttModel") or speech.get("stt_model") or "nova-3",
+            tts_provider="cartesia",
+            tts_model=CARTESIA_TTS_MODEL,
+            enabled_tools=list(tools.get("enabledTools", tools.get("enabled_tools", []))),
             max_concurrent_calls=int(org_doc.get("maxConcurrentCalls", 5)),
-            max_call_seconds=int(settings.get("maxCallDuration", 1800)),
-            silence_timeout_seconds=int(settings.get("silenceTimeout", 20)),
-            record_calls=bool(settings.get("recordingEnabled", True)),
+            max_call_seconds=int(settings.get("maxCallDuration", settings.get("max_call_duration_seconds", 1800))),
+            silence_timeout_seconds=int(settings.get("silenceTimeout", settings.get("silence_timeout_seconds", 20))),
+            record_calls=bool(settings.get("recordingEnabled", settings.get("record_calls", True))),
+            on_no_balance=settings.get("onNoBalance", settings.get("on_no_balance", "message")),
+            forward_number=settings.get("forwardNumber", settings.get("forward_number")),
             bundle=bundle,
         )
 
     return await asyncio.to_thread(_query)
+
+
+# ---------------------------------------------------------------------------
+# LiveKit dispatch job loading (orgId/agentId metadata, room 1:1 session)
+# ---------------------------------------------------------------------------
+
+JOB_CONFIG_CACHE_TTL_SECS = 60
+
+
+def parse_job_metadata(raw: str | dict[str, Any] | None) -> dict[str, Any]:
+    """Parse LiveKit job/dispatch metadata into {orgId, agentId, callId, ...}.
+
+    Never raises — missing keys become empty strings so the caller can fail
+    with a clear ConfigNotFoundError instead of a JSON traceback.
+    """
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        data = dict(raw)
+    else:
+        try:
+            data = json.loads(raw) if isinstance(raw, str) else {}
+        except Exception:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+    # Normalize common key variants.
+    org_id = data.get("orgId") or data.get("org_id") or data.get("organization_id") or ""
+    agent_id = data.get("agentId") or data.get("agent_id") or ""
+    call_id = data.get("callId") or data.get("call_id") or data.get("call") or ""
+    direction = data.get("direction") or "inbound"
+    room = data.get("room") or data.get("room_name") or call_id
+    return {
+        "orgId": str(org_id or ""),
+        "agentId": str(agent_id or ""),
+        "callId": str(call_id or ""),
+        "direction": str(direction or "inbound"),
+        "room": str(room or ""),
+        "raw": data,
+    }
+
+
+def session_key_for_room(room_name: str) -> str:
+    """Map 1:1 LiveKit room name -> session key (reuses call config key layout)."""
+    return CALL_CONFIG_KEY.format(call_id=room_name)
+
+
+async def load_agent_config_by_org_agent(
+    org_id: str, agent_id: str, *, room_name: str = "", direction: str = "inbound"
+) -> AgentConfig:
+    """Load config directly from the agent row (pre-Call-doc, dispatch path)."""
+    import asyncio
+
+    def _query() -> AgentConfig:
+        client = get_mongo_database()
+        from bson import ObjectId
+
+        def find_by_id(collection: Any, value: Any) -> Optional[dict[str, Any]]:
+            value_as_string = str(value)
+            if ObjectId.is_valid(value_as_string):
+                document = collection.find_one({"_id": ObjectId(value_as_string)})
+                if document:
+                    return document
+            return collection.find_one({"_id": value})
+
+        agent_doc = find_by_id(client.agents, agent_id)
+        if not agent_doc or str(agent_doc.get("organizationId", "")) != str(org_id):
+            raise ConfigNotFoundError(f"No agent {agent_id} for org {org_id}.")
+        if agent_doc.get("status") != "active":
+            raise ConfigNotFoundError(f"Agent {agent_id} is not active.")
+        cfg = agent_doc.get("config") or {}
+        identity = cfg.get("identity") or {}
+        instructions = cfg.get("instructions") or {}
+        voice = cfg.get("voice") or {}
+        intelligence = cfg.get("intelligence") or {}
+        speech = cfg.get("speech") or {}
+        tools = cfg.get("tools") or {}
+        settings = cfg.get("settings") or {}
+        org_doc = find_by_id(client.organizations, org_id) or {}
+        call_id = room_name or f"dispatch-{agent_id}"
+        resolved_language = identity.get("language") or voice.get("language") or "hi-IN"
+        raw_intro = instructions.get("greeting") or instructions.get("introduction") or None
+        intro = resolve_introduction(raw_intro, lead_name=None, language=resolved_language)
+        greeting_first = direction != "outbound"
+        return AgentConfig(
+            call_id=call_id,
+            agent_id=str(agent_doc["_id"]),
+            tenant_id=str(org_id),
+            direction=direction if direction in ("inbound", "outbound") else "inbound",
+            room_name=room_name or call_id,
+            system_prompt=instructions.get("systemPrompt") or instructions.get("system_prompt") or DEFAULT_SYSTEM_PROMPT,
+            introduction=intro,
+            greeting_first=greeting_first,
+            language=resolved_language,
+            voice_id=voice.get("voiceId") or voice.get("voice_id") or "",
+            voice_speed=float(voice.get("speed", 1.0)),
+            llm_provider=intelligence.get("provider") or "openrouter",
+            llm_model=intelligence.get("model") or default_openrouter_model(),
+            stt_provider="deepgram",
+            stt_model="nova-3",
+            tts_provider="cartesia",
+            tts_model=CARTESIA_TTS_MODEL,
+            enabled_tools=list(tools.get("enabledTools", tools.get("enabled_tools", []))),
+            max_concurrent_calls=int(org_doc.get("maxConcurrentCalls", 5)),
+            max_call_seconds=int(settings.get("maxCallDuration", 1800)),
+            silence_timeout_seconds=int(settings.get("silenceTimeout", 20)),
+            record_calls=bool(settings.get("recordingEnabled", True)),
+            on_no_balance=settings.get("onNoBalance", settings.get("on_no_balance", "message")),
+            forward_number=settings.get("forwardNumber", settings.get("forward_number")),
+            bundle=agent_doc.get("bundle") if isinstance(agent_doc.get("bundle"), dict) else None,
+        )
+
+    return await asyncio.to_thread(_query)
+
+
+async def load_agent_config_for_job(
+    metadata: str | dict[str, Any] | None, *, room_name: str = ""
+) -> AgentConfig:
+    """Resolve AgentConfig for a LiveKit dispatch job.
+
+    Prefers the Call-doc path when callId is present (Redis -> Mongo), else
+    loads straight from the agent row. Caches dispatch configs in Redis 60s.
+    """
+    parsed = parse_job_metadata(metadata)
+    org_id, agent_id = parsed["orgId"], parsed["agentId"]
+    call_id = parsed["callId"]
+    direction = parsed["direction"] if parsed["direction"] in ("inbound", "outbound") else "inbound"
+    room = room_name or parsed["room"] or call_id
+    if not org_id or not agent_id:
+        raise ConfigNotFoundError("Job metadata must include orgId and agentId.")
+    # Call-id path first (keeps Redis pre-warm + Call linkage).
+    if call_id:
+        try:
+            cfg = await load_agent_config(call_id)
+            if room and not cfg.room_name:
+                cfg.room_name = room
+            try:
+                await get_redis().set(
+                    session_key_for_room(room or call_id),
+                    cfg.model_dump_json(),
+                    ex=JOB_CONFIG_CACHE_TTL_SECS,
+                )
+            except Exception:  # noqa: BLE001 - cache write best-effort
+                pass
+            return cfg
+        except ConfigNotFoundError:
+            pass
+    cfg = await load_agent_config_by_org_agent(
+        org_id, agent_id, room_name=room or call_id, direction=direction
+    )
+    if call_id and not cfg.call_id:
+        cfg.call_id = call_id
+    return cfg
+
+
+def validate_livekit_env() -> dict[str, bool]:
+    """Check required LiveKit + provider env. Returns {var: present}."""
+    required = (
+        "LIVEKIT_URL",
+        "LIVEKIT_API_KEY",
+        "LIVEKIT_API_SECRET",
+        "CARTESIA_API_KEY",
+    )
+    optional = (
+        "LIVEKIT_WEBHOOK_SECRET",
+        "LIVEKIT_AGENT_NAME",
+        "DEEPGRAM_API_KEY",
+        "OPENROUTER_API_KEY",
+        "GCS_RECORDINGS_BUCKET",
+        "MONGODB_URI",
+        "REDIS_URL",
+        "INTERNAL_API_BASE_URL",
+        "INTERNAL_API_SECRET",
+    )
+    status: dict[str, bool] = {}
+    for var in (*required, *optional):
+        status[var] = bool(os.getenv(var, "").strip())
+    missing = [var for var in required if not status[var]]
+    if missing:
+        log.warning("[livekit] missing required env: %s", ", ".join(missing))
+    return status
+
+
+def require_livekit_env() -> None:
+    """Fail fast when required LiveKit worker env is absent."""
+    status = validate_livekit_env()
+    missing = [
+        var
+        for var in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "CARTESIA_API_KEY")
+        if not status[var]
+    ]
+    if missing:
+        raise RuntimeError(f"Missing required worker env: {', '.join(missing)}")
 
 
 # ---------------------------------------------------------------------------

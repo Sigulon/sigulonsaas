@@ -1,12 +1,13 @@
-"""Sigulon-to-Cartesia language resolution.
+"""Sigulon language resolution (LiveKit runtime).
 
-Agent bundles and the web application preserve their application-level language values
-(e.g., "te-IN", "hi-IN", "ta-IN", "en-IN", "te", "hi", "ta", "en").
-Cartesia's current Sonic 3 / Sonic 3.5 and Ink Whisper APIs accept the base ISO-639-1
-values instead ("te", "hi", "ta", "en"). Mapping must happen only at the provider
-boundary, never while storing an agent or exporting its bundle.
+Agent bundles and the web application preserve their application-level
+language values (e.g. "te-IN", "hi-IN", "hinglish", "ta-IN", "en-IN").
+Mapping happens only at the provider boundary, never while storing an
+agent or exporting its bundle.
 
-The supported model/language pairs below are verified against Cartesia APIs.
+- TTS: Cartesia Sonic 3 / 3.5 accepts base ISO-639-1 codes.
+- STT: LiveKit Inference gateway `deepgram/nova-3` with a BCP-47 language.
+  Hinglish (code-mixed Hindi+English) maps to STT "multi" with a prompt note.
 """
 
 from __future__ import annotations
@@ -205,6 +206,75 @@ def validate_cartesia_speech_config(
 # Constant backward-compatible alias
 CARTESIA_TTS_MODEL = CARTESIA_TTS_DEFAULT_MODEL
 
+# ---------------------------------------------------------------------------
+# LiveKit Inference (Deepgram nova-3) STT language mapping
+# ---------------------------------------------------------------------------
+
+# Sigulon base code -> Deepgram BCP-47 / LiveKit Inference language tag.
+# "hinglish" and code-mixed Hindi+English resolve to "multi" (auto-detect).
+SIGULON_TO_DEEPGRAM_LANGUAGE: dict[str, str] = {
+    "en": "en",
+    "hi": "hi",
+    "hinglish": "multi",
+    "hing": "multi",
+    "ta": "ta",
+    "te": "te",
+    "kn": "kn",
+    "mr": "mr",
+    "bn": "bn",
+    "gu": "gu",
+    "ml": "ml",
+    "pa": "pa",
+}
+
+
+def resolve_deepgram_language(language: str | None) -> str:
+    """Map a stored Sigulon language to a Deepgram/LiveKit Inference STT tag.
+
+    Hinglish (hi+en code-mix) -> "multi" so the recognizer auto-detects.
+    Unknown values fall back to "multi" rather than failing the call.
+    """
+    normalized = _normalized_sigulon_language(language)
+    base = normalized.split("-")[0] if "-" in normalized else normalized
+    if not base:
+        return "multi"
+    if base in ("hinglish", "hing", "hi-en", "en-hi"):
+        return "multi"
+    mapped = SIGULON_TO_DEEPGRAM_LANGUAGE.get(base)
+    if mapped is not None:
+        return mapped
+    # Unknown language: multi lets Deepgram auto-detect instead of 400ing.
+    log.warning("[deepgram-stt] unknown Sigulon language %r -> 'multi'", language)
+    return "multi"
+
+
+def language_prompt_hint(language: str | None) -> str:
+    """Short system-prompt suffix describing the caller's language."""
+    normalized = _normalized_sigulon_language(language)
+    base = normalized.split("-")[0] if "-" in normalized else normalized
+    hints = {
+        "hi": "The caller speaks Hindi. Reply in Hindi (Devanagari).",
+        "hinglish": (
+            "The caller speaks Hinglish (Hindi+English code-mix, Latin script). "
+            "Reply in the same Hinglish mix the caller uses."
+        ),
+        "hing": (
+            "The caller speaks Hinglish (Hindi+English code-mix, Latin script). "
+            "Reply in the same Hinglish mix the caller uses."
+        ),
+        "ta": "The caller speaks Tamil. Reply in Tamil.",
+        "te": "The caller speaks Telugu. Reply in Telugu.",
+        "kn": "The caller speaks Kannada. Reply in Kannada.",
+        "mr": "The caller speaks Marathi. Reply in Marathi (Devanagari).",
+        "bn": "The caller speaks Bengali. Reply in Bengali.",
+        "gu": "The caller speaks Gujarati. Reply in Gujarati.",
+        "ml": "The caller speaks Malayalam. Reply in Malayalam.",
+        "pa": "The caller speaks Punjabi. Reply in Punjabi (Gurmukhi).",
+        "en": "The caller speaks English. Reply in English.",
+    }
+    return hints.get(base, "Match the caller's language.")
+
+
 __all__ = [
     "CARTESIA_INK_2_SUPPORTED_LANGUAGES",
     "CARTESIA_INK_WHISPER_SUPPORTED_LANGUAGES",
@@ -215,11 +285,14 @@ __all__ = [
     "CARTESIA_TTS_DEFAULT_MODEL",
     "CARTESIA_TTS_MODEL",
     "CARTESIA_TTS_SUPPORTED_LANGUAGES",
+    "SIGULON_TO_DEEPGRAM_LANGUAGE",
     "CartesiaLanguageConfig",
     "CartesiaLanguageConfigurationError",
     "SIGULON_TO_CARTESIA_LANGUAGE",
+    "language_prompt_hint",
     "resolve_cartesia_language",
     "resolve_cartesia_stt_language",
     "resolve_cartesia_tts_language",
+    "resolve_deepgram_language",
     "validate_cartesia_speech_config",
 ]

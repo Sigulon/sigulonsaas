@@ -13,6 +13,11 @@ function formToParams(form: FormData): Record<string, string> {
   return out;
 }
 
+// TODO(livekit-migration): DEPRECATED Plivo recording fallback.
+// Recordings now land in GCS via LiveKit Egress; Call.recording_url is set
+// from the LiveKit egress_ended webhook (src/app/api/webhooks/livekit).
+// This Plivo handler stays ONLY as a fallback during migration.
+// Removal date: 2026-11-15. Delete this route at step 7 cleanup.
 export async function POST(req: NextRequest) {
   try {
     const params = formToParams(await req.formData());

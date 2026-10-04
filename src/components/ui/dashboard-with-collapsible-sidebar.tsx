@@ -29,7 +29,7 @@ type NavigationItem = {
 const operations: NavigationItem[] = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Operations" },
   { href: "/agents", icon: Bot, label: "Voice Agents" },
-  { href: "/agents/builder", icon: Sparkles, label: "Agent Studio" },
+  { href: "/agents/new", icon: Sparkles, label: "Create Agent" },
   { href: "/campaigns", icon: Megaphone, label: "Campaigns" },
   { href: "/calls", icon: PhoneCall, label: "Call Logs" },
   { href: "/contacts", icon: Users, label: "Contacts" },

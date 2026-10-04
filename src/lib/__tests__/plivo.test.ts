@@ -1,25 +1,21 @@
 import { createHmac } from "crypto";
 import { describe, expect, it } from "vitest";
+// Reduced webhook set (LiveKit migration): signature validation + status
+// reconciliation only. Media handlers (inbound/outbound-answer,
+// transfer-target, conversation) are deleted; answer-XML/stream-URL/dial
+// helpers are covered by livekit.test.ts now.
 import {
-  buildInboundAnswerXml,
-  buildRejectionXml,
   mapPlivoStatus,
-  plivoStreamUrl,
   publicUrlCandidates,
   v2Message,
   v3Message,
   verifyPlivoSignature,
-  dialPlivoCall,
   verifyPlivoCredentials,
   mapPlivoLanguage,
   escXml,
   type PlivoSignatureInput,
 } from "../plivo";
 import { vi } from "vitest";
-import {
-  createRuntimeStreamToken,
-  verifyRuntimeStreamToken,
-} from "../runtime-stream-auth";
 
 const TOKEN = "test-auth-token";
 const URL = "https://example.com/api/webhooks/plivo/inbound";
@@ -154,56 +150,8 @@ describe("publicUrlCandidates", () => {
   });
 });
 
-describe("answer XML", () => {
-  it("bridges into the runtime stream URL", () => {
-    const xml = buildInboundAnswerXml({
-      streamUrl: "wss://rt.example.com/voice-runtime/abc-123",
-      statusCallbackUrl: "https://rt.example.com/plivo/status-callback",
-    });
-    expect(xml).toContain("<Stream");
-    expect(xml).toContain('bidirectional="true"');
-    expect(xml).toContain("wss://rt.example.com/voice-runtime/abc-123");
-    expect(xml).toContain("statusCallbackUrl=");
-  });
-
-  it("escapes XML metacharacters", () => {
-    const xml = buildRejectionXml('Busy & "unavailable" <now>');
-    expect(xml).toContain("<Speak>");
-    expect(xml).toContain("<Hangup />");
-    expect(xml).not.toContain('"unavailable"');
-    expect(xml).toContain("&amp;");
-  });
-});
-
-describe("plivoStreamUrl", () => {
-  it("converts https→wss and http→ws, trims slashes, encodes ids", () => {
-    const oldSecret = process.env.INTERNAL_API_SECRET;
-    process.env.INTERNAL_API_SECRET = "test-stream-signing-secret";
-    expect(plivoStreamUrl("https://rt.example.com/", "abc")).toMatch(
-      /^wss:\/\/rt\.example\.com\/voice-runtime\/abc\?token=/
-    );
-    expect(plivoStreamUrl("http://localhost:8000", "a/b")).toMatch(
-      /^ws:\/\/localhost:8000\/voice-runtime\/a%2Fb\?token=/
-    );
-    if (oldSecret === undefined) delete process.env.INTERNAL_API_SECRET;
-    else process.env.INTERNAL_API_SECRET = oldSecret;
-  });
-});
-
-describe("runtime stream authorization", () => {
-  it("accepts the matching unexpired call token and rejects a different call", () => {
-    const oldSecret = process.env.INTERNAL_API_SECRET;
-    process.env.INTERNAL_API_SECRET = "test-stream-signing-secret";
-    const now = Date.UTC(2026, 0, 1);
-    const token = createRuntimeStreamToken("call-a", now);
-    expect(verifyRuntimeStreamToken("call-a", token, now)).toBe(true);
-    expect(verifyRuntimeStreamToken("call-b", token, now)).toBe(false);
-    if (oldSecret === undefined) delete process.env.INTERNAL_API_SECRET;
-    else process.env.INTERNAL_API_SECRET = oldSecret;
-  });
-});
-
 describe("mapPlivoStatus", () => {
+  // Dual-run reconciliation only: LiveKit webhooks are the source of truth.
   it("maps hangup statuses onto the calls check set", () => {
     expect(mapPlivoStatus("completed")).toBe("completed");
     expect(mapPlivoStatus("busy")).toBe("busy");
@@ -215,57 +163,6 @@ describe("mapPlivoStatus", () => {
     expect(mapPlivoStatus("in-progress")).toBe("in_progress");
     expect(mapPlivoStatus("weird")).toBeNull();
     expect(mapPlivoStatus(null)).toBeNull();
-  });
-});
-
-describe("dialPlivoCall", () => {
-  it("returns requestUuid on successful REST dial", async () => {
-    const originalFetch = global.fetch;
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        message: "call fired",
-        request_uuid: "test-plivo-uuid-123",
-        api_id: "api-test-456",
-      }),
-    });
-
-    const result = await dialPlivoCall({
-      authId: "MA12345",
-      authToken: "secret",
-      fromNumber: "+15551234567",
-      toNumber: "+919876543210",
-      answerUrl: "https://example.com/answer",
-      hangupUrl: "https://example.com/hangup",
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.requestUuid).toBe("test-plivo-uuid-123");
-    global.fetch = originalFetch;
-  });
-
-  it("handles Plivo API errors gracefully", async () => {
-    const originalFetch = global.fetch;
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 400,
-      json: async () => ({
-        error: "Mandatory parameter missing: to",
-      }),
-    });
-
-    const result = await dialPlivoCall({
-      authId: "MA12345",
-      authToken: "secret",
-      fromNumber: "+15551234567",
-      toNumber: "",
-      answerUrl: "https://example.com/answer",
-      hangupUrl: "https://example.com/hangup",
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("Mandatory parameter missing");
-    global.fetch = originalFetch;
   });
 });
 

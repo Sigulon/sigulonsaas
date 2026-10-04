@@ -49,6 +49,8 @@ export function CampaignWizard({
   // once available instead of leaving Continue permanently disabled.
   useEffect(() => {
     if (!selectedAgentId && agents.length > 0 && agents[0]?.id) {
+      // One-time default adoption (pre-existing pattern).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedAgentId(agents[0].id);
     }
   }, [agents, selectedAgentId]);

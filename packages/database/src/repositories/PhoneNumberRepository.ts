@@ -82,6 +82,8 @@ export class PhoneNumberRepository {
     capabilities?: string[];
     direction?: "inbound" | "outbound" | "both";
     agentId?: string | mongoose.Types.ObjectId;
+    region?: string;
+    lkTrunkId?: string;
   }): Promise<IPhoneNumber> {
     await connectToDatabase();
     const number = new PhoneNumberModel({
@@ -94,6 +96,8 @@ export class PhoneNumberRepository {
       direction: data.direction || "both",
       agentId: data.agentId,
       status: "active",
+      region: data.region || (String(data.phoneNumber || "").startsWith("+91") ? "in-mumbai" : "us-east"),
+      lkTrunkId: data.lkTrunkId || "",
     });
     return number.save();
   }
@@ -105,6 +109,8 @@ export class PhoneNumberRepository {
       agentId: string | mongoose.Types.ObjectId | null;
       direction: "inbound" | "outbound" | "both";
       status: "active" | "released" | "pending";
+      region: string;
+      lkTrunkId: string;
     }>
   ): Promise<IPhoneNumber | null> {
     await connectToDatabase();

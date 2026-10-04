@@ -1,17 +1,17 @@
-# Sigulon local stack: Redis + voice runtime + campaign worker.
+# Sigulon local stack: Redis + voice worker + campaign worker.
 #
 # The web app runs on the host (`npm run dev`) with `REDIS_URL` pointing at
-# the Redis below; the two Python services run here so Plivo webhooks,
-# queueing, and audio behave like production. First boot:
+# the Redis below; the two Python services run here so LiveKit dispatch,
+# queueing, and telephony behave like production. First boot:
 #
 #   cp .env.example .env.local            # web (host)
 #   cp voice-runtime/.env.example voice-runtime/.env
 #   cp services/campaign-worker/.env.example services/campaign-worker/.env
 #   docker compose up --build
 #
-# Plivo must reach BOTH the web app (answer/hangup webhooks) and the
-# runtime (wss stream). On localhost use a tunnel (ngrok/cloudflared) and
-# set the public bases in the three env files accordingly.
+# Telephony path: Plivo number -> Plivo Zentrunk (SIP) -> LiveKit Cloud ->
+# room + dispatch -> voice worker (agent.py). Media never touches these
+# containers; the worker only sees frames via the Agents SDK.
 
 services:
   mongodb:
@@ -71,15 +71,14 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       MONGODB_URI: mongodb://mongodb:27017/sigulon?replicaSet=rs0
-      PORT: "8000"
-    ports:
-      - "8000:8000"
+      LIVEKIT_AGENT_NAME: sigulon-voice-agent
     depends_on:
       redis:
         condition: service_healthy
       mongo-init:
         condition: service_completed_successfully
-    # Telephony sockets: never scale this to zero; raise proxy timeouts.
+    # Outbound-only LiveKit worker (agent.py start): no HTTP ingress, no
+    # ports. Liveness = Agents SDK registration. Scale on CPU/dispatch.
 
   campaign-worker:
     build: ./services/campaign-worker

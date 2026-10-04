@@ -1,0 +1,176 @@
+{
+  "bundle_version": 2,
+  "exported_from": {
+    "employee_name": "Imran",
+    "employee_role": "Real Estate Property Consultant",
+    "mode": "instant",
+    "language": "te-IN"
+  },
+  "first_response": "నమస్తే అండి, {{lead_name}} గారితో మాట్లాడుతున్నానా?",
+  "sections": [
+    {
+      "section_key": "instant_enquiry_ack",
+      "label": "Acknowledge New Enquiry",
+      "order": 1,
+      "enabled": true,
+      "node_type": "llm",
+      "edges": [
+        {
+          "to_key": "qualify_plot_size",
+          "condition": "if caller acknowledges their property enquiry"
+        },
+        {
+          "to_key": "close",
+          "condition": "if wrong number or no longer looking for property"
+        }
+      ],
+      "prompt": "Introduce yourself as Imran from Shadnagar Prime County. Mention that you received their enquiry just 2 minutes ago about open villa plots in Shadnagar, and check if it is a good time to speak. 1 question at a time. For example you might say: 'నమస్తే అండి, నేను ప్రైమ్ కౌంటీ నుంచి ఇమ్రాన్ మాట్లాడుతున్నాను. మీరు షాద్‌నగర్ ప్లాట్ల గురించి ఇప్పుడే ఎంక్వైరీ చేశారు కదా అండి, ఒక రెండు నిమిషాలు మాట్లాడవచ్చా?'"
+    },
+    {
+      "section_key": "qualify_plot_size",
+      "label": "Plot Size & Purpose",
+      "order": 2,
+      "enabled": true,
+      "node_type": "llm",
+      "edges": [
+        {
+          "to_key": "qualify_budget",
+          "condition": "once preferred size or investment purpose is shared"
+        },
+        {
+          "to_key": "faqs",
+          "condition": "if caller asks about DTCP approvals or venture location"
+        }
+      ],
+      "prompt": "Ask whether they are looking for investment or immediate villa construction, and what plot size (150, 200, or 300 square yards) they prefer. For example you might say: 'మీరు ఇన్వెస్ట్‌మెంట్ కోసమా లేదా ఇల్లు కట్టుకోవడానికా అండి? అలాగే ఎన్ని గజాల ప్లాట్ చూస్తున్నారు?'"
+    },
+    {
+      "section_key": "qualify_budget",
+      "label": "Budget Range",
+      "order": 3,
+      "enabled": true,
+      "node_type": "llm",
+      "edges": [
+        {
+          "to_key": "book_site_visit",
+          "condition": "once budget or price expectation is answered"
+        },
+        {
+          "to_key": "faqs",
+          "condition": "if customer asks about price per square yard or bank loan"
+        }
+      ],
+      "prompt": "Politely ask what budget range they have in mind so we can recommend the best phase. Keep it respectful and natural. For example you might say: 'మీ బడ్జెట్ ఎంతవరకు అనుకుంటున్నారు అండి, దానికి తగ్గట్టుగా బెస్ట్ ఫేసింగ్ ప్లాట్ సజెస్ట్ చేస్తాను.'"
+    },
+    {
+      "section_key": "book_site_visit",
+      "label": "Site Visit Booking",
+      "order": 4,
+      "enabled": true,
+      "node_type": "llm",
+      "edges": [
+        {
+          "to_key": "close",
+          "condition": "once visit date/time is confirmed or callback agreed"
+        },
+        {
+          "to_key": "faqs",
+          "condition": "if caller asks about site transport or distance from highway"
+        }
+      ],
+      "prompt": "Invite them for a free site visit this weekend with family, and offer free cab pickup from Hyderabad. Confirm their preferred day (Saturday or Sunday) and time. For example you might say: 'ఈ ఆదివారం మా సైట్ విజిట్ ప్లాన్ చేసుకోగలరా అండి? మా కంపెనీ నుంచి ఫ్రీ కార్ పికప్ మరియు డ్రాప్ ఉంటుంది.'"
+    },
+    {
+      "section_key": "faqs",
+      "label": "Venture FAQs & Location Details",
+      "order": 5,
+      "enabled": true,
+      "node_type": "llm",
+      "edges": null,
+      "prompt": "Answer ONLY from what's written here; if a question isn't listed, use your don't-know response.\n\nQ: వెంచర్‌కి DTCP/RERA అప్రూవల్స్ ఉన్నాయా?\nA: అవునండి, మా వెంచర్‌కి DTCP మరియు RERA అప్రూవల్స్ ఉన్నాయి, 100% క్లియర్ టైటిల్.\n\nQ: గజం ధర ఎంత?\nA: స్క్వేర్ యార్డ్ ₹12,500 నుండి ప్రారంభం అవుతుంది అండి.\n\nQ: హైవే నుండి ఎంత దూరం?\nA: బెంగళూరు నేషనల్ హైవే (NH 44) నుండి కేవలం 5 నిమిషాల దూరం.\n\nQ: బ్యాంక్ లోన్ సదుపాయం ఉందా?\nA: ప్రముఖ జాతీయ బ్యాంకులలో 70% వరకు బ్యాంక్ లోన్ సదుపాయం ఉంది అండి.\n\nFor example you might say: 'మా వెంచర్‌కి 100% DTCP మరియు RERA అప్రూవల్స్ ఉన్నాయి అండి.'"
+    },
+    {
+      "section_key": "close",
+      "label": "Call Wrap Up",
+      "order": 6,
+      "enabled": true,
+      "node_type": "llm",
+      "edges": null,
+      "prompt": "Thank the customer warmly and confirm that venture brochure and location pin are being shared on WhatsApp. For example you might say: 'చాలా సంతోషం అండి. లొకేషన్ పిన్ మరియు లేఅవుట్ బ్రోచర్ మీ వాట్సాప్‌కి ఇప్పుడే పంపుతున్నాను. థాంక్యూ అండి!'"
+    }
+  ],
+  "variables": [
+    {
+      "key": "phone",
+      "label": "Phone Number",
+      "source": "pre",
+      "required": true,
+      "extract_hint": null,
+      "is_phone": true,
+      "is_lead_name": false,
+      "is_headline": false,
+      "value_type": "text",
+      "choices": null
+    },
+    {
+      "key": "lead_name",
+      "label": "Lead Name",
+      "source": "pre",
+      "required": false,
+      "extract_hint": null,
+      "is_phone": false,
+      "is_lead_name": true,
+      "is_headline": true,
+      "value_type": "text",
+      "choices": null
+    },
+    {
+      "key": "plot_size_sqyds",
+      "label": "Preferred Plot Size",
+      "source": "capture",
+      "required": false,
+      "extract_hint": "Plot size in square yards: 150, 200, 300 or custom",
+      "is_phone": false,
+      "is_lead_name": false,
+      "is_headline": false,
+      "value_type": "text",
+      "choices": null
+    },
+    {
+      "key": "budget",
+      "label": "Budget Range",
+      "source": "capture",
+      "required": false,
+      "extract_hint": "Total budget or price per sq yard expected by the caller",
+      "is_phone": false,
+      "is_lead_name": false,
+      "is_headline": false,
+      "value_type": "text",
+      "choices": null
+    },
+    {
+      "key": "visit_date_time",
+      "label": "Site Visit Date and Time",
+      "source": "capture",
+      "required": false,
+      "extract_hint": "Agreed day and time slot for site visit",
+      "is_phone": false,
+      "is_lead_name": false,
+      "is_headline": false,
+      "value_type": "text",
+      "choices": null
+    },
+    {
+      "key": "interest_level",
+      "label": "Interest Level",
+      "source": "capture",
+      "required": false,
+      "extract_hint": "High (site visit booked), Medium (requested info), Low (not interested)",
+      "is_phone": false,
+      "is_lead_name": false,
+      "is_headline": false,
+      "value_type": "choice",
+      "choices": ["High", "Medium", "Low"]
+    }
+  ]
+}

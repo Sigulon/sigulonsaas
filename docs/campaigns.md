@@ -40,18 +40,22 @@ mirrored in `src/lib/campaign-queue.ts` ↔ `queueing.py` — keep both in sync.
 ## Worker job flow
 
 Pop → drop stale jobs (missing/foreign campaign/contact, paused campaign
-parks to `pending`) → attempts/DNC checks → active agent + outbound
-number → Lua-atomic layered governors (global/org/campaign/number, TTLs)
-→ mint `calls(queued)` (campaigns) or reuse the web row (single dials) →
-Plivo dial (`answer_url` bound to the call id). Accepted: row → `dialing`,
-contact `dialing` + `attempt_count+1`. Refused slots: retry in 60s.
-Dial errors: release slots, backoff `300s·2^failures`, terminalize when
-attempts exhaust (the minted row fails too — never an orphan `queued`).
+parks to `pending`) → attempts/DNC + `CampaignContact.consent` checks →
+active agent + org-owned outbound number (with `lk_trunk_id`) → Lua-atomic
+layered governors (global/org/campaign/number, TTLs) → mint `calls(queued)`
+(campaigns) or reuse the web row (single dials) → LiveKit dial (create room
+`sigulon-call-{id}` + `CreateAgentDispatch` `{orgId, agentId, direction:
+outbound}` + `CreateSIPParticipant` via the org trunk → Plivo termination).
+Accepted: row → `dialing`, contact `dialing` + `attempt_count+1`. Refused
+slots: retry in 60s. Dial errors: release slots, backoff `300s·2^failures`,
+terminalize when attempts exhaust (the minted row fails too — never an
+orphan `queued`). Callee speaks first; the agent responds (no greet-first).
 
 ## Convergence (the guarantee)
 
-- Status webhooks (`hangup_url`) mirror terminal states onto
-  `campaign_contacts` and bump the campaign counter exactly once.
+- LiveKit webhooks (`room_finished`) mirror terminal states onto
+  `campaign_contacts` and bump the campaign counter exactly once
+  (Plivo `status` only reconciles during dual-run).
 - The 120s sweep requeues stale `queued` (lost jobs/crashes), heals stale
   mid-call rows from their `calls` row (missed webhooks), refills the next
   500-contact page after the current one drains, fails dead dials, and marks
@@ -68,6 +72,6 @@ attempts exhaust (the minted row fails too — never an orphan `queued`).
 
 Throughput ≈ `WORKER_NUMBER_MAX_CONCURRENT × numbers`, paced by the TTL
 governors. Add worker replicas for volume; raise
-`WORKER_CAMPAIGN_MAX_CONCURRENT` per campaign appetite; watch Plivo CPS
+`WORKER_CAMPAIGN_MAX_CONCURRENT` per campaign appetite; watch SIP trunk CPS
 limits per number. Redis LIST/ZSET depth (`LLEN`, `ZCARD`) is the backlog
 signal to alert on.

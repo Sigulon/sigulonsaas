@@ -1,0 +1,22 @@
+# KEDA scales the voice worker on CPU (proxy for LiveKit concurrent
+# dispatch count), not HTTP RPS — the worker is outbound-only with no
+# ingress. At least one replica stays alive so inbound SIP dispatch never
+# waits on a cold start.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: sigulon-voice-worker
+  namespace: sigulon
+spec:
+  scaleTargetRef:
+    name: sigulon-voice-worker
+  pollingInterval: 10
+  cooldownPeriod: 300
+  initialCooldownPeriod: 60
+  minReplicaCount: 1
+  maxReplicaCount: 20
+  triggers:
+    - type: cpu
+      metadata:
+        type: Utilization
+        value: "60"

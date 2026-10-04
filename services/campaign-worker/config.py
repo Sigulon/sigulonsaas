@@ -17,10 +17,14 @@ def _int(name: str, default: int) -> int:
 class WorkerConfig:
     mongodb_uri: str = ""
     redis_url: str = ""
+    livekit_url: str = ""
+    livekit_api_key: str = ""
+    livekit_api_secret: str = ""
+    livekit_agent_name: str = "sigulon-voice-agent"
     plivo_auth_id: str = ""
     plivo_auth_token: str = ""
     encryption_secret: str = ""
-    public_web_url: str = ""  # answer_url / hangup_url base, e.g. https://app.example.com
+    public_web_url: str = ""  # optional callbacks base, e.g. https://app.example.com
 
     poll_timeout_seconds: int = 5
     retry_batch_size: int = 50
@@ -47,7 +51,9 @@ def load_config() -> WorkerConfig:
     required = {
         "MONGODB_URI": os.getenv("MONGODB_URI", "").strip(),
         "REDIS_URL": os.getenv("REDIS_URL", "").strip(),
-        "PUBLIC_WEB_URL": os.getenv("PUBLIC_WEB_URL", "").strip(),
+        "LIVEKIT_URL": os.getenv("LIVEKIT_URL", "").strip(),
+        "LIVEKIT_API_KEY": os.getenv("LIVEKIT_API_KEY", "").strip(),
+        "LIVEKIT_API_SECRET": os.getenv("LIVEKIT_API_SECRET", "").strip(),
     }
     missing = sorted(name for name, value in required.items() if not value)
     if missing:
@@ -62,10 +68,14 @@ def load_config() -> WorkerConfig:
     return WorkerConfig(
         mongodb_uri=required["MONGODB_URI"],
         redis_url=required["REDIS_URL"],
+        livekit_url=required["LIVEKIT_URL"],
+        livekit_api_key=required["LIVEKIT_API_KEY"],
+        livekit_api_secret=required["LIVEKIT_API_SECRET"],
+        livekit_agent_name=os.getenv("LIVEKIT_AGENT_NAME", "sigulon-voice-agent").strip() or "sigulon-voice-agent",
         plivo_auth_id=platform_auth_id,
         plivo_auth_token=platform_auth_token,
         encryption_secret=os.getenv("ENCRYPTION_SECRET", ""),
-        public_web_url=required["PUBLIC_WEB_URL"].rstrip("/"),
+        public_web_url=os.getenv("PUBLIC_WEB_URL", "").strip().rstrip("/"),
         poll_timeout_seconds=_int("WORKER_POLL_TIMEOUT_SECONDS", 5),
         retry_batch_size=_int("WORKER_RETRY_BATCH_SIZE", 50),
         sweep_interval_seconds=_int("WORKER_SWEEP_INTERVAL_SECONDS", 120),

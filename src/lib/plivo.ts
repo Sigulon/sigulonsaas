@@ -134,7 +134,11 @@ export function mapPlivoLanguage(lang?: string): string {
   }
 }
 
-/** Answer XML that bridges the call into the voice runtime over WebSocket. */
+/**
+ * @deprecated LiveKit migration — media handlers deleted. Answer XML is no
+ * longer served (inbound goes Plivo Zentrunk → LiveKit trunk → dispatch).
+ * Kept for the 2-week dual-run window only; remove at cleanup.
+ * Answer XML that bridges the call into the voice runtime over WebSocket. */
 export function buildInboundAnswerXml(args: {
   streamUrl: string;
   statusCallbackUrl?: string | null;
@@ -170,6 +174,8 @@ export function buildRejectionXml(message: string): string {
 }
 
 /**
+ * @deprecated LiveKit migration — the worker never opens a media WebSocket.
+ * Kept for dual-run only; remove at cleanup.
  * WebSocket URL Plivo streams to. Mirrors runtime
  * `providers/telephony.py::stream_url_for_call` (https→wss, http→ws).
  */
@@ -316,6 +322,9 @@ export interface DialPlivoResult {
 }
 
 /**
+ * @deprecated LiveKit migration — outbound dial goes room + AgentDispatch +
+ * SIP participant (see src/lib/livekit.ts, services/campaign-worker/dialer.py).
+ * Kept for dual-run only; remove at cleanup.
  * Triggers an outbound call via Plivo REST Call/ API directly.
  */
 export async function dialPlivoCall(params: DialPlivoParams): Promise<DialPlivoResult> {

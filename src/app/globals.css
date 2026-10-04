@@ -17,5 +17,9 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-inter-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter-sans), "Noto Sans Telugu", "Gautami", "Telugu Sangam MN", Arial, Helvetica, sans-serif;
+}
+
+textarea, input {
+  font-family: inherit, "Noto Sans Telugu", "Gautami", "Telugu Sangam MN", sans-serif;
 }

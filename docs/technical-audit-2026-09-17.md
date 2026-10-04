@@ -3,7 +3,7 @@
 ## Scope and evidence
 
 This is a source-level audit of the Next.js control plane, MongoDB data
-layer, Redis coordination, Plivo webhooks, the Pipecat voice runtime, and the
+layer, Redis coordination, Plivo webhooks, the legacy-rtc voice runtime, and the
 campaign worker. No real phone call was placed during this audit. Docker
 Desktop was unavailable, the local environment has no `REDIS_URL`, and the
 previous tunnel log contains DNS/QUIC failures. Consequently, provider and
@@ -29,7 +29,7 @@ Browser
   -> Plivo REST / signed Plivo webhooks
   -> signed WSS media URL
   -> FastAPI voice runtime
-  -> Pipecat: Plivo transport -> VAD -> Cartesia STT
+  -> legacy-rtc: Plivo transport -> VAD -> Cartesia STT
              -> OpenRouter Gemini -> Cartesia TTS -> Plivo transport
   -> caller
 
@@ -57,9 +57,9 @@ recording, and billing ledger store.
    `voice-runtime/main.py` rejects missing, altered, expired, or cross-call
    tokens before accepting the WebSocket.
 6. The runtime loads the cached canonical configuration or MongoDB config,
-   obtains a Redis tenant concurrency slot, then creates one Pipecat pipeline.
+   obtains a Redis tenant concurrency slot, then creates one legacy-rtc pipeline.
    First greeting/audio is emitted by the pipeline, not by a Next.js request.
-7. On close, Pipecat finalization persists transcript/summary/recording data
+7. On close, legacy-rtc finalization persists transcript/summary/recording data
    best-effort and the signed Plivo status webhook settles billing exactly once.
 
 ### Inbound call flow
@@ -67,7 +67,7 @@ recording, and billing ledger store.
 `POST /api/webhooks/plivo/inbound` normalizes the dialled E.164 number,
 looks up its active Mongo phone-number assignment, validates the per-org
 Plivo signature, creates the contact/call/event records, prewarms the config
-cache, and returns the same signed Pipecat stream XML. It does not use the
+cache, and returns the same signed legacy-rtc stream XML. It does not use the
 outbound answer route or a separate speech engine.
 
 ### Campaign flow
@@ -103,7 +103,7 @@ run with Next.js `after()`, while MongoDB remains the config fallback.
 
 | Finding | Evidence/root cause | Resolution |
 |---|---|---|
-| Two voice stacks could serve calls | Missing runtime URL switched webhooks to Plivo `<GetInput>/<Speak>`, bypassing Cartesia/Pipecat. | Removed the legacy call path. Calls now reject cleanly unless `VOICE_RUNTIME_URL` is configured. The old endpoint returns 410 only. |
+| Two voice stacks could serve calls | Missing runtime URL switched webhooks to Plivo `<GetInput>/<Speak>`, bypassing Cartesia/legacy-rtc. | Removed the legacy call path. Calls now reject cleanly unless `VOICE_RUNTIME_URL` is configured. The old endpoint returns 410 only. |
 | Media WebSocket was guessable by call ID | A live call ID alone was enough to connect. | HMAC stream token with a 10-minute expiry and call binding; runtime verifies before accept. |
 | Webhook signature gaps | Recording callback did not validate Plivo signatures; answer/status had development bypass behavior. | All Plivo callbacks validate V2/V3 signatures before writes and reject invalid requests. |
 | Workspace context fallback | Missing session could resolve to the first organization. | Removed unauthenticated organization fallback. |
@@ -133,9 +133,9 @@ run with Next.js `after()`, while MongoDB remains the config fallback.
 
 ### Medium-priority work
 
-- Pipecat emits a deprecation warning for `AudioContextTTSService`; schedule
-  a compatibility upgrade before Pipecat 2.0.
-- Recording has two sources: Pipecat creates a dual-track WAV and uploads it
+- legacy-rtc emits a deprecation warning for `AudioContextTTSService`; schedule
+  a compatibility upgrade before legacy-rtc 2.0.
+- Recording has two sources: legacy-rtc creates a dual-track WAV and uploads it
   to GCS; Plivo also posts its provider recording URL. Both are recorded in
   MongoDB. Consolidate on one canonical playback source and serve private
   recordings through an authenticated signed/proxy URL. The generic storage
@@ -176,7 +176,7 @@ changing state.
 |---|---|
 | `npm run build` | PASS |
 | `npm run test:unit` | PASS — 68 tests |
-| `uv run --project voice-runtime --with pytest pytest voice-runtime/tests -q` | PASS — 65 tests; one Pipecat deprecation warning |
+| `uv run --project voice-runtime --with pytest pytest voice-runtime/tests -q` | PASS — 65 tests; one legacy-rtc deprecation warning |
 | `uv run --project services/campaign-worker --with pytest pytest services/campaign-worker/tests -q` | PASS — 27 tests |
 | Docker Compose configuration parse | PASS; Docker daemon unavailable, so containers were not started |
 | English/Telugu/Hindi/Tamil/inbound live calls | NOT RUN — requires Redis, public HTTPS tunnels, provider credentials, and a permitted test number |

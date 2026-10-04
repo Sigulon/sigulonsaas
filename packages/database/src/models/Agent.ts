@@ -60,7 +60,12 @@ export interface IAgent extends Document {
   status: "draft" | "active" | "paused";
   currentVersionId?: mongoose.Types.ObjectId;
   publishedVersionNumber?: number;
+  language: string; // top-level speech language (mirrors config.identity.language)
+  greetingFirst: boolean; // inbound: greet first; outbound dial-out: false
+  onNoBalance: "message" | "forward_number"; // zero-balance behavior
+  forwardNumber?: string; // forward target when onNoBalance=forward_number
   config: CanonicalAgentConfig;
+  description?: string | null;
   specification?: Record<string, unknown> | null;
   bundle?: Record<string, unknown> | null;
   createdAt: Date;
@@ -150,9 +155,31 @@ const AgentSchema = new Schema<IAgent>(
       type: Number,
       default: 0,
     },
+    language: {
+      type: String,
+      default: "hi",
+      index: true,
+    },
+    greetingFirst: {
+      type: Boolean,
+      default: true,
+    },
+    onNoBalance: {
+      type: String,
+      enum: ["message", "forward_number"],
+      default: "message",
+    },
+    forwardNumber: {
+      type: String,
+      default: "",
+    },
     config: {
       type: CanonicalAgentConfigSchema,
       required: true,
+    },
+    description: {
+      type: String,
+      default: null,
     },
     specification: {
       type: Schema.Types.Mixed,

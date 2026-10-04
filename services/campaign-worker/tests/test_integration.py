@@ -1,7 +1,7 @@
 """Cross-module integration: seed -> queue -> dial -> mirror -> sweep.
 
 Exercises queueing + worker + store + dialer together against fakes
-(no Redis/Mongo/Plivo): a campaign contact flows from `queued` to
+(no Redis/Mongo/LiveKit Cloud): a campaign contact flows from `queued` to
 `dialing` to terminal, and the drained campaign completes — the same
 shape the web status webhook + sweeps produce in production.
 """
@@ -29,7 +29,7 @@ class TestCampaignLifecycle(unittest.TestCase):
         # 1. Web enqueued the job; worker pops and dials.
         job = {"campaign_id": "c1", "contact_id": "ct1",
                "org_id": "o1", "attempt": 0}
-        with patch("dialer.dial", return_value={"request_uuid": "req-1"}):
+        with patch("dialer.dial", return_value={"room": "sigulon-call-x", "dispatch_id": "d-1"}):
             self.assertEqual(W.process_job(ctx, job), "dialed")
 
         calls = ctx.database.table("calls").rows
@@ -59,7 +59,7 @@ class TestCampaignLifecycle(unittest.TestCase):
                "org_id": "o1", "attempt": 0}
 
         # Dial API down twice (max attempts = 2 in test config).
-        with patch("dialer.dial", side_effect=RuntimeError("Plivo dial HTTP 500")):
+        with patch("dialer.dial", side_effect=RuntimeError("LiveKit dial HTTP 500")):
             self.assertEqual(W.process_job(ctx, job), "retry_scheduled")
             self.assertEqual(W.process_job(ctx, job), "terminal:failed")
 
@@ -86,7 +86,7 @@ class TestCampaignLifecycle(unittest.TestCase):
 
         ctx = make_ctx()
         ctx.redis = redis
-        with patch("dialer.dial", return_value={"request_uuid": "req-9"}):
+        with patch("dialer.dial", return_value={"room": "sigulon-call-y", "dispatch_id": "d-9"}):
             self.assertEqual(W.process_job(ctx, claimed[0]), "dialed")
 
 

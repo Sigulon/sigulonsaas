@@ -65,6 +65,7 @@ export async function GET(
           },
         },
         specification: agent.specification,
+        description: agent.description || null,
         bundle: agent.bundle,
         language: agent.config.identity.language,
         voice_id: agent.config.voice.voiceId,
@@ -188,6 +189,7 @@ export async function PATCH(
     const updated = await AgentRepository.updateDraft(id, orgId, {
       name: body.name,
       status: body.status,
+      description: body.description,
       specification: body.specification,
       bundle: body.bundle,
       config: Object.keys(partialConfig).length > 0 ? partialConfig : undefined,

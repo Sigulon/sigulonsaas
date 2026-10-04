@@ -73,12 +73,12 @@ export default function AgentsPage() {
             Web Voice Tester
           </Button>
 
-          <Link href="/agents/builder">
+          <Link href="/agents/new">
             <Button
-              className="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 text-xs shadow-sm font-semibold h-9 px-4"
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold flex items-center gap-1.5 text-xs shadow-sm h-9 px-4"
             >
               <Plus className="h-4 w-4" />
-              Build Voice Agent
+              Create AI Agent
             </Button>
           </Link>
         </div>
@@ -108,10 +108,10 @@ export default function AgentsPage() {
           <p className="mt-1 text-xs text-slate-500 max-w-sm mx-auto">
             Create an Indian language AI voice agent with custom prompts, live tools, and Plivo voice execution.
           </p>
-          <Link href="/agents/builder">
-            <Button className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white">
+          <Link href="/agents/new">
+            <Button className="mt-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold">
               <Sparkles className="h-4 w-4 mr-2" />
-              Build Voice Agent
+              Create AI Agent
             </Button>
           </Link>
         </div>
