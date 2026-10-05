@@ -1,11 +1,6 @@
 import type { VoiceAgent } from "./types";
 import type { AgentBundle } from "@sigulon/agent-schema/schema";
-import {
-  CARTESIA_STT_PROVIDER,
-  CARTESIA_TTS_MODEL,
-  CARTESIA_TTS_PROVIDER,
-  OPENROUTER_DEFAULT_MODEL,
-} from "./types";
+import { VOICE_STACK } from "./voice-config";
 
 /**
  * Canonical agent configuration (spec §7) — the single contract shared by
@@ -116,20 +111,20 @@ export function toCanonicalAgentConfig(
       rules: settings.rules ?? [],
     },
     voice: {
-      provider: CARTESIA_TTS_PROVIDER,
+      provider: VOICE_STACK.TTS.PROVIDER,
       voice_id: agent.voice_id,
       language: agent.language,
       speed: settings.speed ?? 1.0,
     },
     intelligence: {
-      provider: "openrouter",
-      model: OPENROUTER_DEFAULT_MODEL,
+      provider: VOICE_STACK.LLM.PROVIDER,
+      model: VOICE_STACK.LLM.MODEL,
     },
     speech: {
-      stt_provider: CARTESIA_STT_PROVIDER,
-      stt_model: null,
-      tts_provider: CARTESIA_TTS_PROVIDER,
-      tts_model: CARTESIA_TTS_MODEL,
+      stt_provider: VOICE_STACK.STT.PROVIDER,
+      stt_model: VOICE_STACK.STT.MODEL,
+      tts_provider: VOICE_STACK.TTS.PROVIDER,
+      tts_model: VOICE_STACK.TTS.MODEL,
     },
     telephony: {
       provider: "plivo",

@@ -14,11 +14,10 @@
     "test:unit": "vitest run",
     "db:init": "vite-node scripts/create-tables.ts",
     "db:seed": "vite-node scripts/seed-mongodb.ts",
-    "db:migrate:gemini-2-5-flash": "vite-node scripts/migrate-openrouter-gemini-25-flash.ts",
+    "db:migrate:voice-stack": "vite-node scripts/migrate-to-consolidated-voice-stack.ts",
     "tunnels": "powershell -ExecutionPolicy Bypass -File scripts/start-tunnels.ps1"
   },
   "dependencies": {
-    "@types/nodemailer": "^8.0.1",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "jose": "^6.2.12",
@@ -40,6 +39,7 @@
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.1",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",

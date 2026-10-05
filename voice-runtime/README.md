@@ -1,8 +1,8 @@
 # Sigulon Voice Worker (LiveKit Agents 1.x)
 
 Multi-tenant voice execution engine: **LiveKit Agents 1.x** session
-orchestration, **Deepgram nova-3** STT via Inference gateway, **Gemma 4 31B**
-LLM with OpenRouter fallback, **Cartesia Sonic 3** TTS, and **LiveKit SIP**
+orchestration, **Deepgram Nova-3** STT via LiveKit Inference, **Google Gemini 2.5 Flash**
+LLM via LiveKit Inference, **Cartesia Sonic 3.6** direct TTS, and **LiveKit SIP**
 telephony. One deployment serves all tenants — no per-org processes, no
 tenant-specific code. Media never touches our servers.
 
@@ -24,7 +24,7 @@ OUTBOUND: campaign-worker → LiveKit API (room + AgentDispatch + SIP
 | `language.py` | Deepgram STT tags + Cartesia TTS boundary + prompt hints (Hinglish → `multi`) |
 | `observability.py` | Call-context JSON logging, in-memory metrics, readiness checks |
 | `auth.py` | Control-API auth helpers (bearer secret, HMAC stream tokens) |
-| `providers/` | Model descriptors: `stt` (deepgram/assemblyai-fallback), `llm` (inference/openrouter-fallback), `tts` (cartesia), `errors` |
+| `providers/` | Model descriptors: `stt` (LiveKit Inference Deepgram Nova-3), `llm` (LiveKit Inference Gemini 2.5 Flash), `tts` (Cartesia Sonic 3.6), `errors` |
 | `tools/` | Function-calling tools as LiveKit `@function_tool` (`book_appointment`, …) |
 | `postcall.py` | Transcript → summary/outcome → POST control API |
 | `billing.py` | Reserve on start / settle on end / zero-balance branch |
@@ -86,10 +86,8 @@ Notes:
 
 | Var | Required | Purpose |
 |---|---|---|
-| `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | yes | Cloud + Inference gateway + dispatch |
-| `CARTESIA_API_KEY` | yes | Sonic 3 TTS (voice UUID always explicit) |
-| `DEEPGRAM_API_KEY` | via gateway | nova-3 STT (or LiveKit-provided) |
-| `OPENROUTER_API_KEY` | fallback LLM | Gemini 2.5 Flash fallback on primary error |
+| `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | yes | LiveKit Cloud + Inference gateway (LLM & STT) + dispatch |
+| `CARTESIA_API_KEY` | yes | Sonic 3.6 direct TTS (voice UUID always explicit) |
 | `GCS_RECORDINGS_BUCKET` | yes | Egress destination (`sigulon-recordings-<env>`) |
 | `REDIS_URL` | yes | Config cache + concurrency counters |
 | `MONGODB_URI` | yes | Source-of-truth agent/call configuration |
@@ -100,11 +98,11 @@ Notes:
 
 * Bundle codes map at the provider boundary: `en-IN → en`, `hi-IN → hi`,
   `hinglish → multi` (code-mix auto-detect) + prompt note, `ta/te → ta/te`.
-* Cartesia Sonic 3 is required; voice UUID always explicit (never default).
-* Error recovery: Inference reconnects owned by the gateway; AssemblyAI STT
-  / OpenRouter LLM fallbacks engage ONLY on primary error (never dual-run);
-  Cartesia TTS retries once then ends loudly (never substitutes a voice).
-  See `providers/errors.py`.
+* Cartesia Sonic 3.6 is used for direct TTS; voice UUID always explicit (never default).
+* LLM: Google Gemini 2.5 Flash via LiveKit Inference (`google/gemini-2.5-flash`).
+* STT: Deepgram Nova-3 via LiveKit Inference (`deepgram/nova-3`).
+* No separate provider keys needed for LLM or STT (routed via LiveKit Cloud).
+* See `voice_stack.py` and `providers/errors.py`.
 
 ## Ops
 

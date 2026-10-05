@@ -53,10 +53,13 @@ from postcall import (
     summarize_call,
     transcript_from_events,
 )
-from providers.llm import build_llm, build_llm_fallback, default_openrouter_model
-from providers.stt import build_stt, build_stt_fallback
-from providers.tts import PRIMARY_TTS_MODEL, build_tts
 from tools import build_tools
+from voice_stack import (
+    TTS_MODEL,
+    build_llm,
+    build_stt,
+    build_tts,
+)
 
 _handler = logging.StreamHandler(sys.stdout)
 _handler.setFormatter(JsonFormatter())
@@ -123,28 +126,16 @@ async def _run_session(ctx, config: AgentConfig, metadata: dict) -> None:
     if not slot_ok:
         log.warning("[voice] concurrency limit hit org=%s (%s)", config.tenant_id, slot_count)
 
-    # Build STT/LLM/TTS with primary -> fallback-on-error (never dual-run).
-    try:
-        stt = build_stt(language=config.language)
-    except Exception as exc:
-        log.warning("[stt] primary build failed, using fallback: %s", exc)
-        stt = build_stt_fallback(language=config.language)
+    # Build STT (Deepgram Nova-3 via LiveKit Inference) and LLM (Gemini 2.5 Flash via LiveKit Inference)
+    stt = build_stt(language=config.language)
+    llm = build_llm()
 
-    try:
-        llm = build_llm()
-    except Exception as exc:
-        log.warning("[llm] primary build failed (%s); trying OpenRouter fallback", exc)
-        fallback_key = os.getenv("OPENROUTER_API_KEY", "") or config.openrouter_api_key or ""
-        if not fallback_key:
-            raise
-        llm = build_llm_fallback(api_key=fallback_key)
-
-    # Voice UUID ALWAYS explicit from config — never default.
+    # Voice UUID ALWAYS explicit from config — never default. Direct Cartesia TTS (Sonic 3.6).
     tts = build_tts(
         voice_id=config.voice_id,
         language=config.language,
         speed=config.voice_speed,
-        model=PRIMARY_TTS_MODEL,
+        model=config.tts_model or TTS_MODEL,
     )
 
     try:
@@ -263,13 +254,6 @@ async def _run_session(ctx, config: AgentConfig, metadata: dict) -> None:
             log.info("[voice] max_call_seconds reached room=%s", room_name)
     except Exception as exc:  # noqa: BLE001 - session errors end the call loudly
         log.exception("[voice] session failed room=%s: %s", room_name, exc)
-        # Swap to fallback LLM once on provider error, then retry briefly.
-        try:
-            fallback_key = os.getenv("OPENROUTER_API_KEY", "") or config.openrouter_api_key or ""
-            if fallback_key and "llm" not in str(exc).lower():
-                pass
-        except Exception:  # noqa: BLE001
-            pass
     finally:
         duration = time.monotonic() - started_at
         tracker.emit_summary()
@@ -278,11 +262,7 @@ async def _run_session(ctx, config: AgentConfig, metadata: dict) -> None:
         except Exception:  # noqa: BLE001
             transcript = []
         try:
-            summary = await summarize_call(
-                transcript,
-                api_key=os.getenv("OPENROUTER_API_KEY", "") or config.openrouter_api_key or "",
-                model=default_openrouter_model(),
-            )
+            summary = await summarize_call(transcript)
         except Exception:  # noqa: BLE001
             summary = None
         captured_vars = bundle_runner.get_captured_variables() if bundle_runner else {}

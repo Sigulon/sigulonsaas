@@ -18,17 +18,13 @@ import {
   RecordingModel,
   CallOutcomeModel,
   AppointmentModel,
-  ToolModel,
-  ToolConfigModel,
   BillingAccountModel,
   CreditLedgerModel,
   UsageRecordModel,
   ProviderAccountModel,
   WebhookEventModel,
-  ApiKeyModel,
   TeamInviteModel,
   AuditLogModel,
-  NotificationModel,
 } from "../packages/database";
 import mongoose from "mongoose";
 
@@ -70,17 +66,13 @@ async function main() {
     RecordingModel,
     CallOutcomeModel,
     AppointmentModel,
-    ToolModel,
-    ToolConfigModel,
     BillingAccountModel,
     CreditLedgerModel,
     UsageRecordModel,
     ProviderAccountModel,
     WebhookEventModel,
-    ApiKeyModel,
     TeamInviteModel,
     AuditLogModel,
-    NotificationModel,
   ];
 
   console.log("Verifying collections in MongoDB database:\n");

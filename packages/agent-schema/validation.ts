@@ -111,15 +111,15 @@ export function buildCanonicalConfig(
       speed: Number(settings.speed ?? 1.0),
     },
     intelligence: {
-      provider: "openrouter",
+      provider: "livekit-inference",
       model: "google/gemini-2.5-flash",
       temperature: Number(settings.temperature ?? 0.7),
     },
     speech: {
-      stt_provider: "cartesia",
-      stt_model: null,
+      stt_provider: "livekit-inference",
+      stt_model: "deepgram/nova-3",
       tts_provider: "cartesia",
-      tts_model: "sonic-3",
+      tts_model: "sonic-3.6",
     },
     telephony: {
       provider: "plivo",

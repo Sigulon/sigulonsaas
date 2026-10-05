@@ -10,8 +10,6 @@ dependencies = [
     "livekit-plugins-silero>=0.0.1",
     "livekit-plugins-turn-detector>=0.0.1",
     "livekit-plugins-cartesia>=0.0.1",
-    "livekit-plugins-deepgram>=0.0.1",
-    "livekit-plugins-openai>=0.0.1",
     "redis==8.1.0",
     "pymongo==4.18.1",
     "pydantic==2.13.5",

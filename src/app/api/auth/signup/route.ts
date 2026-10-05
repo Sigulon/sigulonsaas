@@ -7,12 +7,7 @@ import {
   BillingRepository,
 } from "@sigulon/database";
 import { hashPassword, createAndSetSession, ACTIVE_ORG_COOKIE_NAME } from "@/lib/auth";
-import {
-  CARTESIA_STT_PROVIDER,
-  CARTESIA_TTS_MODEL,
-  CARTESIA_TTS_PROVIDER,
-  OPENROUTER_DEFAULT_MODEL,
-} from "@/lib/types";
+import { VOICE_STACK } from "@/lib/voice-config";
 
 export const dynamic = "force-dynamic";
 
@@ -93,21 +88,21 @@ export async function POST(req: NextRequest) {
           greeting: `Hello! Thank you for calling ${organization.name}. How can I assist you today?`,
         },
         voice: {
-          provider: CARTESIA_TTS_PROVIDER,
+          provider: VOICE_STACK.TTS.PROVIDER,
           voiceId: "126a0835-beea-4e77-a883-f66eabcf6dd4",
-          model: CARTESIA_TTS_MODEL,
+          model: VOICE_STACK.TTS.MODEL,
           speed: 1.0,
         },
         intelligence: {
-          provider: "openrouter",
-          model: OPENROUTER_DEFAULT_MODEL,
+          provider: VOICE_STACK.LLM.PROVIDER,
+          model: VOICE_STACK.LLM.MODEL,
           temperature: 0.7,
         },
         speech: {
-          sttProvider: CARTESIA_STT_PROVIDER,
-          sttModel: "ink-whisper",
-          ttsProvider: CARTESIA_TTS_PROVIDER,
-          ttsModel: CARTESIA_TTS_MODEL,
+          sttProvider: VOICE_STACK.STT.PROVIDER,
+          sttModel: VOICE_STACK.STT.MODEL,
+          ttsProvider: VOICE_STACK.TTS.PROVIDER,
+          ttsModel: VOICE_STACK.TTS.MODEL,
         },
         telephony: {
           provider: "plivo",

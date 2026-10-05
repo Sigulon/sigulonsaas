@@ -76,8 +76,6 @@ secret names, never secret data.
 | `sigulon-plivo-auth-id` | `PLIVO_AUTH_ID` (SIP trunking + dual-run only) |
 | `sigulon-plivo-auth-token` | `PLIVO_AUTH_TOKEN` (SIP trunking + dual-run only) |
 | `sigulon-cartesia-api-key` | `CARTESIA_API_KEY` |
-| `sigulon-deepgram-api-key` | `DEEPGRAM_API_KEY` |
-| `sigulon-openrouter-api-key` | `OPENROUTER_API_KEY` (fallback LLM) |
 | `sigulon-smtp-host` | `SMTP_HOST` |
 | `sigulon-smtp-user` | `SMTP_USER` |
 | `sigulon-smtp-password` | `SMTP_PASSWORD` |

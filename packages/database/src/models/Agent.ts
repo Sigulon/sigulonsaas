@@ -18,12 +18,12 @@ export interface CanonicalAgentConfig {
     speed?: number;
   };
   intelligence: {
-    provider: string; // openrouter
+    provider: string; // livekit-inference
     model: string;
     temperature?: number;
   };
   speech: {
-    sttProvider: string; // cartesia
+    sttProvider: string; // livekit-inference
     sttModel?: string;
     ttsProvider: string; // cartesia
     ttsModel?: string;
@@ -87,19 +87,19 @@ const CanonicalAgentConfigSchema = new Schema<CanonicalAgentConfig>(
     voice: {
       provider: { type: String, default: "cartesia" },
       voiceId: { type: String, required: true },
-      model: { type: String, default: "sonic-3" },
+      model: { type: String, default: "sonic-3.6" },
       speed: { type: Number, default: 1.0 },
     },
     intelligence: {
-      provider: { type: String, default: "openrouter" },
+      provider: { type: String, default: "livekit-inference" },
       model: { type: String, default: "google/gemini-2.5-flash" },
       temperature: { type: Number, default: 0.7 },
     },
     speech: {
-      sttProvider: { type: String, default: "cartesia" },
-      sttModel: { type: String, default: "ink-whisper" },
+      sttProvider: { type: String, default: "livekit-inference" },
+      sttModel: { type: String, default: "deepgram/nova-3" },
       ttsProvider: { type: String, default: "cartesia" },
-      ttsModel: { type: String, default: "sonic-3" },
+      ttsModel: { type: String, default: "sonic-3.6" },
     },
     telephony: {
       provider: { type: String, default: "plivo" },

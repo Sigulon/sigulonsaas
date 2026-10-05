@@ -32,19 +32,16 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, Field, model_validator
 
 from language import CARTESIA_TTS_MODEL
+from voice_stack import (
+    LLM_MODEL,
+    STT_MODEL,
+    SUPPORTED_LLM_PROVIDER,
+    SUPPORTED_STT_PROVIDER,
+    SUPPORTED_TTS_PROVIDER,
+    TTS_MODEL,
+)
 
 log = logging.getLogger("voice-runtime.config")
-
-OPENROUTER_DEFAULT_MODEL_ENV_VAR = "OPENROUTER_MODEL"
-OPENROUTER_FALLBACK_MODEL = "google/gemini-2.5-flash"
-
-
-def default_openrouter_model() -> str:
-    """Effective runtime LLM model. Override with the OPENROUTER_MODEL env var."""
-    return (
-        os.getenv(OPENROUTER_DEFAULT_MODEL_ENV_VAR, OPENROUTER_FALLBACK_MODEL)
-        or OPENROUTER_FALLBACK_MODEL
-    ).strip() or OPENROUTER_FALLBACK_MODEL
 
 # ---------------------------------------------------------------------------
 # Template variable resolution (clean greetings before Cartesia TTS)
@@ -281,29 +278,29 @@ class AgentConfig(BaseModel):
         description="BCP-47 / ISO-639-1 speech language, e.g. 'en', 'hi', 'hinglish', 'te'.",
     )
     stt_provider: str = Field(
-        default="cartesia",
-        description="STT vendor (Cartesia).",
+        default=SUPPORTED_STT_PROVIDER,
+        description="STT vendor (LiveKit Inference).",
     )
     stt_model: Optional[str] = Field(
-        default=None,
-        description="STT model id. None = factory default for the provider/language.",
+        default=STT_MODEL,
+        description="STT model id (deepgram/nova-3).",
     )
-    tts_model: str = Field(default=CARTESIA_TTS_MODEL, description="Cartesia TTS model id.")
+    tts_model: str = Field(default=TTS_MODEL, description="Cartesia TTS model id (sonic-3.6).")
     tts_provider: str = Field(
-        default="cartesia",
-        description="TTS vendor. Only 'cartesia' is implemented; others fail fast.",
+        default=SUPPORTED_TTS_PROVIDER,
+        description="TTS vendor (Cartesia).",
     )
     voice_id: str = Field(description="Cartesia voice UUID for TTS output.")
     voice_speed: float = Field(
         default=1.0, description="TTS speed multiplier (Cartesia range 0.6-1.5)."
     )
     llm_provider: str = Field(
-        default="openrouter",
-        description="LLM vendor (OpenRouter).",
+        default=SUPPORTED_LLM_PROVIDER,
+        description="LLM vendor (LiveKit Inference).",
     )
     llm_model: str = Field(
-        default_factory=default_openrouter_model,
-        description="LLM model id (OPENROUTER_MODEL env, default google/gemini-2.5-flash).",
+        default=LLM_MODEL,
+        description="LLM model id (google/gemini-2.5-flash).",
     )
 
     # Prompt context (informational: system_prompt is pre-generated server-side
@@ -337,23 +334,21 @@ class AgentConfig(BaseModel):
     # Optional per-call BYOK overrides (decrypted by the control plane before
     # caching in Redis). None = fall back to the service-wide env vars.
     cartesia_api_key: Optional[str] = Field(default=None)
-    openrouter_api_key: Optional[str] = Field(default=None)
 
     @model_validator(mode="after")
     def normalize_voice_stack(self) -> "AgentConfig":
         """Keep cached and legacy agent records on the supported voice stack.
 
-        LiveKit stack: Deepgram nova-3 STT via Inference gateway, Cartesia
-        Sonic 3 TTS (voice UUID always explicit), LiveKit Inference LLM with
-        OpenRouter fallback on error. Never default the voice.
+        LiveKit stack: Deepgram nova-3 STT via LiveKit Inference, Cartesia
+        Sonic 3.6 TTS (voice UUID always explicit), LiveKit Inference LLM
+        (Gemini 2.5 Flash). Never default the voice.
         """
-        self.llm_provider = self.llm_provider or "openrouter"
-        if not self.llm_model:
-            self.llm_model = default_openrouter_model()
-        self.stt_provider = "deepgram"
-        self.stt_model = self.stt_model or "nova-3"
-        self.tts_provider = "cartesia"
-        self.tts_model = CARTESIA_TTS_MODEL
+        self.llm_provider = SUPPORTED_LLM_PROVIDER
+        self.llm_model = LLM_MODEL
+        self.stt_provider = SUPPORTED_STT_PROVIDER
+        self.stt_model = STT_MODEL
+        self.tts_provider = SUPPORTED_TTS_PROVIDER
+        self.tts_model = TTS_MODEL
         if not (self.voice_id or "").strip():
             raise ValueError("voice_id (Cartesia voice UUID) must be explicit from config.")
         if self.introduction:
@@ -452,12 +447,12 @@ class AgentConfig(BaseModel):
             language=voice.get("language", "en"),
             voice_id=voice.get("voice_id", voice.get("voiceId", "")),
             voice_speed=float(voice.get("speed", 1.0)),
-            llm_provider=intelligence.get("provider", "openrouter"),
-            llm_model=intelligence.get("model") or default_openrouter_model(),
-            stt_provider=speech.get("stt_provider", speech.get("sttProvider", "deepgram")),
-            stt_model=speech.get("stt_model", speech.get("sttModel")) or "nova-3",
-            tts_provider="cartesia",
-            tts_model=CARTESIA_TTS_MODEL,
+            llm_provider=SUPPORTED_LLM_PROVIDER,
+            llm_model=LLM_MODEL,
+            stt_provider=SUPPORTED_STT_PROVIDER,
+            stt_model=STT_MODEL,
+            tts_provider=SUPPORTED_TTS_PROVIDER,
+            tts_model=TTS_MODEL,
             enabled_tools=list(data.get("tools", data.get("enabled_tools", []))),
             max_concurrent_calls=limit,
             max_call_seconds=int(
@@ -667,12 +662,12 @@ async def _load_agent_config_from_mongodb(call_id: str) -> AgentConfig:
             language=resolved_language,
             voice_id=voice.get("voiceId") or voice.get("voice_id") or "",
             voice_speed=float(voice.get("speed", 1.0)),
-            llm_provider=intelligence.get("provider") or "openrouter",
-            llm_model=intelligence.get("model") or default_openrouter_model(),
-            stt_provider="deepgram",
-            stt_model=speech.get("sttModel") or speech.get("stt_model") or "nova-3",
-            tts_provider="cartesia",
-            tts_model=CARTESIA_TTS_MODEL,
+            llm_provider=SUPPORTED_LLM_PROVIDER,
+            llm_model=LLM_MODEL,
+            stt_provider=SUPPORTED_STT_PROVIDER,
+            stt_model=STT_MODEL,
+            tts_provider=SUPPORTED_TTS_PROVIDER,
+            tts_model=TTS_MODEL,
             enabled_tools=list(tools.get("enabledTools", tools.get("enabled_tools", []))),
             max_concurrent_calls=int(org_doc.get("maxConcurrentCalls", 5)),
             max_call_seconds=int(settings.get("maxCallDuration", settings.get("max_call_duration_seconds", 1800))),
@@ -780,12 +775,12 @@ async def load_agent_config_by_org_agent(
             language=resolved_language,
             voice_id=voice.get("voiceId") or voice.get("voice_id") or "",
             voice_speed=float(voice.get("speed", 1.0)),
-            llm_provider=intelligence.get("provider") or "openrouter",
-            llm_model=intelligence.get("model") or default_openrouter_model(),
-            stt_provider="deepgram",
-            stt_model="nova-3",
-            tts_provider="cartesia",
-            tts_model=CARTESIA_TTS_MODEL,
+            llm_provider=SUPPORTED_LLM_PROVIDER,
+            llm_model=LLM_MODEL,
+            stt_provider=SUPPORTED_STT_PROVIDER,
+            stt_model=STT_MODEL,
+            tts_provider=SUPPORTED_TTS_PROVIDER,
+            tts_model=TTS_MODEL,
             enabled_tools=list(tools.get("enabledTools", tools.get("enabled_tools", []))),
             max_concurrent_calls=int(org_doc.get("maxConcurrentCalls", 5)),
             max_call_seconds=int(settings.get("maxCallDuration", 1800)),
@@ -850,8 +845,6 @@ def validate_livekit_env() -> dict[str, bool]:
     optional = (
         "LIVEKIT_WEBHOOK_SECRET",
         "LIVEKIT_AGENT_NAME",
-        "DEEPGRAM_API_KEY",
-        "OPENROUTER_API_KEY",
         "GCS_RECORDINGS_BUCKET",
         "MONGODB_URI",
         "REDIS_URL",

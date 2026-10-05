@@ -12,7 +12,7 @@ import { hashPayload, parseDispatchMetadata } from "@/lib/livekit";
 import { prewarmCallConfig } from "@/lib/redis";
 import { toCanonicalAgentConfig } from "@/lib/agent-config";
 import { AgentRepository } from "@sigulon/database";
-import { CARTESIA_STT_PROVIDER, OPENROUTER_DEFAULT_MODEL } from "@/lib/types";
+import { VOICE_STACK } from "@/lib/voice-config";
 
 export const dynamic = "force-dynamic";
 
@@ -118,9 +118,9 @@ export async function POST(req: NextRequest) {
                 system_prompt: agent.config.instructions.systemPrompt,
                 introduction: agent.config.instructions.greeting,
                 status: agent.status,
-                llm_provider: "openrouter",
-                llm_model: OPENROUTER_DEFAULT_MODEL,
-                stt_provider: CARTESIA_STT_PROVIDER,
+                llm_provider: VOICE_STACK.LLM.PROVIDER,
+                llm_model: VOICE_STACK.LLM.MODEL,
+                stt_provider: VOICE_STACK.STT.PROVIDER,
                 enabled_tools: agent.config.tools.enabledTools,
                 settings: agent.config.settings,
                 bundle: agent.bundle,

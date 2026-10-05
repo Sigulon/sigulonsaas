@@ -2,14 +2,12 @@
 
 Session policy (one place, so every provider behaves the same way):
 
-* **STT** — LiveKit Inference owns reconnects. Our job is to pick the right
-  language tag (see :mod:`language`) and fall back to AssemblyAI only on a
-  primary provider error (never dual-run).
-* **LLM** — transient transport errors (timeouts, 5xx, connection resets)
-  are retried with exponential backoff; auth/validation errors fail fast.
-  OpenRouter fallback engages only on primary error.
-* **TTS** — never silently substitute a different voice/vendor mid-call;
-  transient errors get one retry, then the call ends loudly.
+* **STT** — LiveKit Inference (Deepgram Nova-3) owns reconnects.
+* **LLM** — LiveKit Inference (Gemini 2.5 Flash) transient transport errors
+  (timeouts, 5xx, connection resets) are retried with exponential backoff;
+  auth/validation errors fail fast.
+* **TTS** — Cartesia Sonic 3.6 direct: never silently substitute a different voice/vendor
+  mid-call; transient errors get one retry, then the call ends loudly.
 * **Telephony / persistence** — LiveKit SIP + MongoDB writes use the same
   retry helper so webhooks survive redelivery bursts.
 
@@ -85,7 +83,7 @@ class ProviderError(RuntimeError):
     """A provider failure with a retry policy attached.
 
     Attributes:
-        provider: Vendor name, e.g. ``"cartesia"``, ``"openrouter"``.
+        provider: Vendor name, e.g. ``"cartesia"``, ``"livekit-inference"``.
         category: ``"transient"`` (safe to retry) or ``"permanent"``.
         original: The underlying exception, if any.
     """
@@ -165,8 +163,8 @@ async def with_provider_retry(
 def describe_recovery(provider: str) -> str:
     """Human-readable recovery policy for a provider (logs + docs)."""
     policies = {
-        "deepgram-stt": "LiveKit Inference auto-reconnect; AssemblyAI fallback on primary error only",
-        "openrouter": "transient 5xx/timeout retried x3 with backoff; auth fails fast",
+        "deepgram-stt": "LiveKit Inference (Deepgram Nova-3) auto-reconnect",
+        "livekit-inference-llm": "LiveKit Inference (Gemini 2.5 Flash) transient 5xx/timeout retried x3 with backoff; auth fails fast",
         "cartesia-tts": "one transient retry; never substitute another voice mid-call",
         "livekit-sip": "SIP redispatch on room kill; no double billing via idempotent settle",
         "mongodb": "config/finalize writes retried x3; webhook idempotency keeps it exactly-once",

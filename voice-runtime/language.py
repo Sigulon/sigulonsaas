@@ -18,8 +18,8 @@ from typing import Optional
 
 log = logging.getLogger("voice-runtime.language")
 
-CARTESIA_TTS_DEFAULT_MODEL = "sonic-3"
-CARTESIA_TTS_ALLOWED_MODELS = frozenset(("sonic-3", "sonic-3.5"))
+CARTESIA_TTS_DEFAULT_MODEL = "sonic-3.6"
+CARTESIA_TTS_ALLOWED_MODELS = frozenset(("sonic-3.6", "sonic-3.5", "sonic-3"))
 CARTESIA_STT_ENGLISH_MODEL = "ink-2"
 CARTESIA_STT_MULTILINGUAL_MODEL = "ink-whisper"
 CARTESIA_STT_ALLOWED_MODELS = frozenset(("ink-2", "ink-whisper"))

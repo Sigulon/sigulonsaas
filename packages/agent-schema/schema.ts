@@ -24,16 +24,16 @@ export interface CanonicalAgentConfig {
   };
 
   intelligence: {
-    provider: "openrouter";
+    provider: "livekit-inference";
     model: "google/gemini-2.5-flash";
     temperature?: number;
   };
 
   speech: {
-    stt_provider: "cartesia";
+    stt_provider: "livekit-inference";
     stt_model?: string | null;
     tts_provider: "cartesia";
-    tts_model: "sonic-3";
+    tts_model: "sonic-3.6";
   };
 
   telephony: {
@@ -57,88 +57,8 @@ export function callConfigCacheKey(callId: string): string {
   return `sigulon:call:${callId}:config`;
 }
 
-// ---------------------------------------------------------------------------
-// Internal Agent Specification (Source of Truth from 12-step wizard)
-// ---------------------------------------------------------------------------
-
 /** `bulk` is an outbound campaign mode with pre-loaded lead data; `instant` is high-intent immediate qualification. */
 export type CallType = "inbound" | "outbound" | "bulk" | "instant";
-
-export interface QualificationField {
-  key: string;
-  label: string;
-  type: "text" | "number" | "date" | "boolean" | "choice";
-  required: boolean;
-  description?: string;
-  choices?: string[];
-}
-
-export interface PreCallVariable {
-  key: string;
-  label: string;
-  source: "pre";
-  value_type?: "text" | "number" | "date" | "boolean";
-  description?: string;
-}
-
-export interface FAQItem {
-  question: string;
-  answer: string;
-}
-
-export interface ActionItem {
-  action: string;
-  required_fields?: string[];
-  description?: string;
-}
-
-export interface AgentSpecification {
-  call_type: CallType;
-  agent: {
-    name: string;
-    role: string;
-  };
-  call_purpose: string;
-  desired_outcomes: string[];
-  qualification_fields: QualificationField[];
-  pre_call_variables: PreCallVariable[];
-  business_knowledge: string;
-  faqs: FAQItem[];
-  actions: ActionItem[];
-  language: string;
-  /** Primary language first; supports natural language switching at runtime. */
-  languages?: string[];
-  auto_language_switch: boolean;
-  personality: string[];
-  conversation_style: "concise" | "balanced" | "conversational";
-  rules: string[];
-}
-
-/** Natural-language input accepted by POST /api/agents/generate. */
-export interface VoiceAgentGenerationInput {
-  mode: CallType;
-  language: string;
-  languages?: string[];
-  business_description: string;
-  agent_goal: string;
-  data_to_collect?: Array<
-    | string
-    | {
-        key?: string;
-        label: string;
-        required?: boolean;
-        source?: "pre" | "capture";
-        value_type?: "text" | "number" | "date" | "boolean" | "choice";
-        choices?: string[];
-        extract_hint?: string;
-      }
-  >;
-  pre_call_variables?: PreCallVariable[];
-  business_knowledge?: string;
-  faqs?: FAQItem[];
-  agent_name?: string;
-  agent_role?: string;
-}
 
 // ---------------------------------------------------------------------------
 // Standardized Agent Bundle (bundle_version: 2)

@@ -41,7 +41,7 @@ class TestPromptHints(unittest.TestCase):
 class TestCartesiaBoundary(unittest.TestCase):
     def test_tts_still_base_codes(self):
         lang, model = resolve_cartesia_tts_language("te-IN", model="sonic")
-        self.assertEqual((lang, model), ("te", "sonic-3"))
+        self.assertEqual((lang, model), ("te", "sonic-3.6"))
 
     def test_validate_config(self):
         cfg = validate_cartesia_speech_config(language="hi-IN", stt_model=None, tts_model=None)
@@ -60,8 +60,12 @@ class TestAgentConfigVoice(unittest.TestCase):
             call_id="c", agent_id="a", tenant_id="t", voice_id="v-uuid-1234",
             direction="outbound", language="hinglish",
         )
-        self.assertEqual(cfg.stt_provider, "deepgram")
-        self.assertEqual(cfg.tts_model, "sonic-3")
+        self.assertEqual(cfg.stt_provider, "livekit-inference")
+        self.assertEqual(cfg.stt_model, "deepgram/nova-3")
+        self.assertEqual(cfg.tts_provider, "cartesia")
+        self.assertEqual(cfg.tts_model, "sonic-3.6")
+        self.assertEqual(cfg.llm_provider, "livekit-inference")
+        self.assertEqual(cfg.llm_model, "google/gemini-2.5-flash")
 
 
 if __name__ == "__main__":
