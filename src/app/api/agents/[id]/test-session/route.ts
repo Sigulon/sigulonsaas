@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
 import { canCreateAndRun } from "@/lib/roles";
-import { AgentRepository } from "@sigulon/database";
+import { AgentRepository, CallRepository } from "@sigulon/database";
 import { CartesiaClient } from "@/lib/cartesia";
+import { uploadRecordingToR2, R2_DEFAULT_BUCKET } from "@/lib/storage";
+import { AccessToken, AgentDispatchClient } from "livekit-server-sdk";
+import {
+  LIVEKIT_AGENT_NAME,
+  buildDispatchMetadata,
+  generateLiveKitChatCompletion,
+} from "@/lib/livekit";
 
 export const dynamic = "force-dynamic";
-
-interface HistoryItem {
-  role: string;
-  content: string;
-}
 
 export async function POST(
   req: NextRequest,
@@ -28,64 +30,161 @@ export async function POST(
 
     const {
       message = "",
-      history = [],
       action = "turn",
+      callId: incomingCallId,
+      durationSeconds = 0,
+      transcript = [],
+      audioBase64: incomingAudioBase64,
       voiceId: overrideVoiceId,
       language: overrideLanguage,
       systemPrompt: overridePrompt,
     } = body;
 
+    // Load the exact Agent configuration stored in MongoDB
     const agent = await AgentRepository.findById(agentId, orgId);
 
     const cartesia = new CartesiaClient(cartesiaApiKey);
 
-    let voiceId = overrideVoiceId || agent?.config?.voice?.voiceId || "126a0835-beea-4e77-a883-f66eabcf6dd4";
-    let language = overrideLanguage || agent?.config?.identity?.language || "hi";
-    let systemPrompt = overridePrompt || agent?.config?.instructions?.systemPrompt || "You are a helpful AI voice assistant.";
-    let introduction = agent?.config?.instructions?.greeting || "";
+    const voiceId =
+      overrideVoiceId ||
+      agent?.config?.voice?.voiceId ||
+      "126a0835-beea-4e77-a883-f66eabcf6dd4";
+    const language =
+      overrideLanguage ||
+      agent?.config?.identity?.language ||
+      "en";
+    const systemPrompt =
+      overridePrompt ||
+      agent?.config?.instructions?.systemPrompt ||
+      "You are a helpful AI voice assistant.";
+    const introduction =
+      agent?.config?.instructions?.greeting || "";
 
-    if (!agent && !overrideVoiceId) {
-      try {
-        const cAgent = await cartesia.getAgent(agentId);
-        if (cAgent) {
-          voiceId = cAgent.tts_voice || voiceId;
-          language = cAgent.tts_language || language;
-          systemPrompt = cAgent.llm_system_prompt || systemPrompt;
-          introduction = cAgent.llm_introduce || introduction;
-        }
-      } catch (e) {
-        console.warn("Could not fetch agent directly from Cartesia:", e);
+    // =========================================================================
+    // ACTION: END_CALL (Persist transcript & upload audio to Cloudflare R2)
+    // =========================================================================
+    if (action === "end_call") {
+      const targetCallId = incomingCallId;
+      if (!targetCallId) {
+        return NextResponse.json({ error: "callId is required to complete call session" }, { status: 400 });
       }
+
+      const call = await CallRepository.findById(targetCallId, orgId);
+      if (!call) {
+        return NextResponse.json({ error: "Call session not found" }, { status: 404 });
+      }
+
+      // 1. Format and save turn-by-turn transcripts to MongoDB
+      const turns = Array.isArray(transcript)
+        ? transcript.map((t: { role?: string; content?: string; text?: string }) => ({
+            speaker: (t.role === "assistant" || t.role === "agent" ? "agent" : "user") as "user" | "agent",
+            text: String(t.content || t.text || ""),
+          }))
+        : [];
+
+      if (turns.length > 0) {
+        await CallRepository.saveTranscript(call._id, call.organizationId, turns).catch((err) =>
+          console.warn("[test-session] Failed saving transcript:", err)
+        );
+      }
+
+      // 2. Upload recorded audio to Cloudflare R2 if audio provided
+      let recordingUrl: string | undefined;
+      const objectKey = `recordings/web-test-${targetCallId}.webm`;
+
+      if (incomingAudioBase64 && typeof incomingAudioBase64 === "string") {
+        try {
+          const cleanBase64 = incomingAudioBase64.replace(/^data:audio\/\w+;base64,/, "");
+          const audioBuffer = Buffer.from(cleanBase64, "base64");
+
+          const uploadResult = await uploadRecordingToR2({
+            objectKey,
+            body: audioBuffer,
+            mimeType: "audio/webm",
+            bucket: R2_DEFAULT_BUCKET,
+          });
+
+          await CallRepository.saveRecording({
+            callId: call._id,
+            organizationId: call.organizationId,
+            storageProvider: "r2",
+            bucket: R2_DEFAULT_BUCKET,
+            objectKey,
+            durationSeconds: Math.round(durationSeconds),
+            format: "webm",
+            sizeBytes: audioBuffer.length,
+            status: "ready",
+          }).catch((err) => console.warn("[test-session] Failed saving recording metadata:", err));
+
+          recordingUrl = uploadResult.url || `/api/recordings/stream/${encodeURIComponent(objectKey)}`;
+        } catch (err) {
+          console.error("[test-session] Error uploading audio to Cloudflare R2:", err);
+        }
+      }
+
+      // 3. Extract heuristic outcome & summary
+      const userText = turns
+        .filter((t) => t.speaker === "user")
+        .map((t) => t.text)
+        .join(" ")
+        .toLowerCase();
+
+      let outcome = "completed";
+      if (/interest|yes|book|appointment|sure|price|quote|visit/i.test(userText)) {
+        outcome = "interested";
+      } else if (/no|not interested|stop|don't|wrong/i.test(userText)) {
+        outcome = "not_interested";
+      }
+
+      await CallRepository.saveOutcome(call._id, call.organizationId, {
+        disposition: outcome,
+        customFields: { notes: `Web Voice Simulator test (${turns.length} turns)` },
+      }).catch(() => null);
+
+      const summary = `Web Voice test completed (${turns.length} turns). Outcome: ${outcome}.`;
+
+      // 4. Update Call to COMPLETED
+      await CallRepository.transitionState(call._id, "COMPLETED", {
+        endedAt: new Date(),
+        durationSeconds: Math.max(1, Math.round(durationSeconds)),
+        summary,
+        metadata: {
+          ...(call.metadata || {}),
+          ...(recordingUrl ? { recordingUrl } : {}),
+          outcome,
+          is_web_test: true,
+        },
+      } as never).catch((err) => console.warn("[test-session] Transition state error:", err));
+
+      return NextResponse.json({
+        success: true,
+        callId: targetCallId,
+        recordingUrl,
+        outcome,
+        turnsCount: turns.length,
+      });
     }
 
-    // 2. Handle initial call greeting
+    // =========================================================================
+    // ACTION: INIT (Create MongoDB Call + LiveKit Room Token & Cartesia Greeting)
+    // =========================================================================
     if (action === "init") {
       let greetingText = introduction;
       if (!greetingText) {
-        // Extract identity or business from prompt if available
-        const businessMatch = systemPrompt.match(/Business Overview:\s*([^\n]+)/i) ||
-                              systemPrompt.match(/representing\s+([^\n.]+)/i);
-        const bizName = businessMatch ? businessMatch[1].slice(0, 40) : "";
-
         if (language === "hi") {
-          greetingText = bizName
-            ? `नमस्ते! मैं ${bizName} से बात कर रहा हूँ। आज मैं आपकी क्या सहायता कर सकता हूँ?`
-            : "नमस्ते! आपकी कॉल का स्वागत है। आज मैं आपकी किस सेवा में सहायता कर सकता हूँ?";
+          greetingText = "नमस्ते! मैं आपकी किस प्रकार सहायता कर सकता हूँ?";
         } else if (language === "te") {
-          greetingText = bizName
-            ? `నమస్కారం! నేను ${bizName} నుండి మాట్లాడుతున్నాను. నేను మీకు ఎలా సహాయపడగలను?`
-            : "నమస్కారం! స్వాగతం. ఈరోజు నేను మీకు ఎలా సహాయపడగలను?";
+          greetingText = "నమస్కారం! నేను మీకు ఎలా సహాయపడగలను?";
         } else if (language === "ta") {
           greetingText = "வணக்கம்! நான் உங்களுக்கு எப்படி உதவ முடியும்?";
         } else if (language === "kn") {
-          greetingText = "ನಮಸ್ಕಾರ! ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?";
+          greetingText = "ನಮಸ್ಕಾರ! ನಾನು మీకు ఎలా సహాయపడగలను?";
         } else {
-          greetingText = bizName
-            ? `Hello! Thank you for calling ${bizName}. How can I help you today?`
-            : "Hello! Thank you for calling. How can I assist you today?";
+          greetingText = `Hello! Thank you for calling ${agent?.name || "us"}. How may I help you today?`;
         }
       }
 
+      // Synthesize greeting with Cartesia Sonic
       const audioBuffer = await cartesia.generateSpeech({
         transcript: greetingText,
         voiceId,
@@ -94,151 +193,119 @@ export async function POST(
 
       const audioBase64 = Buffer.from(audioBuffer).toString("base64");
 
-      return NextResponse.json({
-        replyText: greetingText,
-        audioBase64,
-        audioMimeType: "audio/mpeg",
-      });
-    }
+      // Create persistent Call record in MongoDB for this web test session
+      let callId = incomingCallId;
+      try {
+        const createdCall = await CallRepository.create({
+          organizationId: orgId,
+          agentId: agent?._id || agentId,
+          agentVersionId: agent?.currentVersionId,
+          provider: "livekit-web",
+          direction: "inbound",
+          fromNumber: "Web Simulator",
+          toNumber: agent?.name || "AI Voice Agent",
+          status: "IN_PROGRESS",
+          metadata: {
+            is_web_test: true,
+            voiceId,
+            language,
+          },
+        });
+        callId = createdCall._id.toString();
 
-    // 3. Conversation Turn Generation
-    let replyText = "";
-    const lower = message.toLowerCase();
+        // Seed initial greeting turn in Transcript
+        await CallRepository.saveTranscript(createdCall._id, orgId, [
+          { speaker: "agent", text: greetingText },
+        ]).catch(() => null);
+      } catch (err) {
+        console.warn("[test-session] Could not create Call doc for test session:", err);
+      }
 
-      // Extract specific business facts from the agent's system prompt
-      const bizMatch = systemPrompt.match(/Business Overview:\s*([^\n]+)/i);
-      const bizInfo = bizMatch ? bizMatch[1].trim() : "our business offerings";
+      // Generate LiveKit Cloud Room Token and Dispatch if LiveKit is configured
+      let livekitToken: string | undefined;
+      let roomName: string | undefined;
+      const livekitUrl = process.env.LIVEKIT_URL;
+      const livekitKey = process.env.LIVEKIT_API_KEY;
+      const livekitSecret = process.env.LIVEKIT_API_SECRET;
 
-      const goalMatch = systemPrompt.match(/Primary Goal:\s*([^\n]+)/i) ||
-                        systemPrompt.match(/Call Objective[\s\S]*?-\s*([^\n]+)/i);
-      const callGoal = goalMatch ? goalMatch[1].trim() : "schedule a consultation";
+      if (livekitUrl && livekitKey && livekitSecret && callId) {
+        try {
+          roomName = `sigulon-test-${callId}`;
+          const at = new AccessToken(livekitKey, livekitSecret, {
+            identity: `web-user-${Date.now()}`,
+            name: "Web Tester",
+            ttl: "1h",
+          });
+          at.addGrant({
+            roomJoin: true,
+            room: roomName,
+            canPublish: true,
+            canSubscribe: true,
+          });
+          livekitToken = await at.toJwt();
 
-      const talkingMatch = systemPrompt.match(/Highlight the core offerings mentioned:\s*([^\n]+)/i) ||
-                           systemPrompt.match(/Key Talking Points[\s\S]*?-\s*([^\n]+)/i);
-      const offerings = talkingMatch ? talkingMatch[1].trim().replace(/\.$/, "") : bizInfo;
-
-      const isAskingServices =
-        lower.includes("what") ||
-        lower.includes("service") ||
-        lower.includes("do") ||
-        lower.includes("kya") ||
-        lower.includes("offer") ||
-        lower.includes("help") ||
-        lower.includes("kaise") ||
-        lower.includes("seve") ||
-        lower.includes("emi") ||
-        lower.includes("property") ||
-        lower.includes("solar") ||
-        lower.includes("dental");
-
-      const isAskingPrice =
-        lower.includes("price") ||
-        lower.includes("cost") ||
-        lower.includes("pricing") ||
-        lower.includes("kitna") ||
-        lower.includes("rate") ||
-        lower.includes("charges") ||
-        lower.includes("fees") ||
-        lower.includes("budget") ||
-        lower.includes("dhara");
-
-      const isAskingBooking =
-        lower.includes("book") ||
-        lower.includes("appointment") ||
-        lower.includes("time") ||
-        lower.includes("kal") ||
-        lower.includes("slot") ||
-        lower.includes("schedule") ||
-        lower.includes("meet") ||
-        lower.includes("visit") ||
-        lower.includes("tour") ||
-        lower.includes("samayam");
-
-      const isGreeting =
-        lower.includes("hello") ||
-        lower.includes("namaste") ||
-        lower.includes("namaskaram") ||
-        lower.includes("hi") ||
-        lower.includes("hey") ||
-        lower.includes("kaise ho") ||
-        lower.includes("bagunnara");
-
-      const isAffirmative =
-        lower.includes("yes") ||
-        lower.includes("haan") ||
-        lower.includes("theek") ||
-        lower.includes("okay") ||
-        lower.includes("sure") ||
-        lower.includes("avunu") ||
-        lower.includes("sari");
-
-      const isAskingLocation =
-        lower.includes("location") ||
-        lower.includes("address") ||
-        lower.includes("kahan") ||
-        lower.includes("office") ||
-        lower.includes("where") ||
-        lower.includes("ekkada");
-
-      if (isAskingServices) {
-        if (language === "hi") {
-          replyText = `हम मुख्य रूप से ${offerings} प्रदान करते हैं। हमारा उद्देश्य ${callGoal} है। क्या आप इसके बारे में विस्तार से जानना चाहेंगे?`;
-        } else if (language === "te") {
-          replyText = `మేము ${offerings} అందిస్తున్నాము. మా ముఖ్య ఉద్దేశం ${callGoal}. మీరు మరిన్ని వివరాలు తెలుసుకోవాలనుకుంటున్నారా?`;
-        } else {
-          replyText = `We specialize in ${offerings}. Our team is focused on helping you ${callGoal}. Would you like to know more about this?`;
-        }
-      } else if (isAskingPrice) {
-        if (language === "hi") {
-          replyText = `${offerings} के लिए हमारी दरें बहुत ही पारदर्शी और किफायती हैं। क्या मैं आपके बजट के अनुसार उपयुक्त विकल्प देखने के लिए कॉल तय करूँ?`;
-        } else if (language === "te") {
-          replyText = `${offerings} కోసం మా ధరలు చాలా అనుకూలంగా ఉంటాయి. మీ బడ్జెట్ ప్రకారం పూర్తి వివరాలు అందించడానికి సమయం కేటాయించనా?`;
-        } else {
-          replyText = `Our pricing for ${offerings} is very competitive and transparent. May I schedule a brief session to walk you through the options?`;
-        }
-      } else if (isAskingBooking) {
-        if (language === "hi") {
-          replyText = `हाँ, मैं बिल्कुल आपके लिए समय आरक्षित कर सकता हूँ। क्या कल सुबह 11 बजे का समय आपके लिए सुविधाजनक रहेगा?`;
-        } else if (language === "te") {
-          replyText = `తప్పకుండా, నేను మీ కోసం సమయం బుక్ చేయగలను. రేపు ఉదయం 11 గంటలకు మీకు వీలవుతుందా?`;
-        } else {
-          replyText = `Certainly! I would be delighted to schedule that for you. Would tomorrow morning at 11 AM work best for you?`;
-        }
-      } else if (isAffirmative) {
-        if (language === "hi") {
-          replyText = `बहुत बढ़िया! मैंने आपकी पुष्टि दर्ज कर ली है ताकि हम ${callGoal} कर सकें। क्या कोई और सवाल है जिसका मैं उत्तर दे सकूँ?`;
-        } else if (language === "te") {
-          replyText = `చాలా మంచిది! మీ నిర్ధారణ నమోదు చేయబడింది. మరేదైనా ప్రశ్న ఉందా?`;
-        } else {
-          replyText = `Wonderful! I have recorded your confirmation to ${callGoal}. Is there anything else you would like to clarify?`;
-        }
-      } else if (isGreeting) {
-        if (language === "hi") {
-          replyText = `नमस्ते! आपका बहुत स्वागत है। मैं ${bizInfo} के संबंध में आपकी सहायता करने के लिए उपस्थित हूँ। बताइए मैं क्या कर सकता हूँ?`;
-        } else if (language === "te") {
-          replyText = `నమస్కారం! స్వాగతం. నేను ${bizInfo} గురించి మీకు సహాయం చేయడానికి సిద్ధంగా ఉన్నాను. చెప్పండి నేను ఎలా సహాయపడగలను?`;
-        } else {
-          replyText = `Hello! Welcome. I am here to assist you regarding ${bizInfo}. How can I best help you today?`;
-        }
-      } else if (isAskingLocation) {
-        if (language === "hi") {
-          replyText = `हमारा केंद्रीय कार्यालय प्रमुख स्थान पर है, और हमारी टीम फोन और व्यक्तिगत दोनों रूप से उपलब्ध है। क्या आप कार्यालय आना पसंद करेंगे?`;
-        } else if (language === "te") {
-          replyText = `మా కార్యాలయం నగరంలో ఉంది మరియు మా బృందం అందుబాటులో ఉంది. మీరు వ్యక్తిగతంగా కలవాలనుకుంటున్నారా?`;
-        } else {
-          replyText = `Our office is centrally located and our team is ready to welcome you. Would you like to schedule an in-person visit?`;
-        }
-      } else {
-        if (language === "hi") {
-          replyText = `हाँ, मैं आपकी बात समझ गया। ${offerings} के संदर्भ में हम आपकी पूरी सहायता करेंगे। क्या आप अपना पसंदीदा समय बता सकते हैं?`;
-        } else if (language === "te") {
-          replyText = `నేను అర్థం చేసుకున్నాను. ${offerings} విషయంలో మేము మీకు పూర్తిగా సహాయం చేస్తాము. మీకు అనువైన సమయం చెప్పగలరా?`;
-        } else {
-          replyText = `I understand completely. Regarding ${offerings}, our team will ensure you get the best outcome. What time works best for you?`;
+          // Dispatch the LiveKit Agent worker for LiveKit Inference
+          const dispatchClient = new AgentDispatchClient(livekitUrl, livekitKey, livekitSecret);
+          await dispatchClient.createDispatch(
+            roomName,
+            LIVEKIT_AGENT_NAME,
+            {
+              metadata: buildDispatchMetadata({
+                orgId,
+                agentId: agent?._id.toString() || agentId,
+                callId,
+                direction: "inbound",
+                room: roomName,
+              }),
+            }
+          ).catch((dispatchErr) => {
+            console.warn("[test-session] Agent dispatch (optional if running live):", dispatchErr?.message);
+          });
+        } catch (tokenErr) {
+          console.warn("[test-session] LiveKit token generation check:", tokenErr);
         }
       }
 
-    // 4. Synthesize voice with Cartesia Sonic-3
+      return NextResponse.json({
+        callId,
+        replyText: greetingText,
+        audioBase64,
+        audioMimeType: "audio/mpeg",
+        livekitToken,
+        livekitUrl,
+        roomName,
+      });
+    }
+
+    // =========================================================================
+    // ACTION: TURN (LiveKit Inference Gemini 2.5 Flash + Cartesia Sonic TTS)
+    // =========================================================================
+    if (!message || typeof message !== "string") {
+      return NextResponse.json({ error: "Message is required" }, { status: 400 });
+    }
+
+    const history = Array.isArray(body.history) ? body.history : [];
+    const conversationMessages = [
+      ...history.map((h: { role?: string; content?: string }) => ({
+        role: h.role === "assistant" || h.role === "agent" ? "assistant" : "user",
+        content: String(h.content || ""),
+      })),
+      { role: "user", content: message },
+    ];
+
+    let replyText = "";
+    try {
+      replyText = await generateLiveKitChatCompletion({
+        messages: conversationMessages,
+        systemPrompt,
+        temperature: agent?.config?.intelligence?.temperature ?? 0.7,
+      });
+    } catch (llmErr) {
+      console.error("[test-session] LiveKit Inference error:", llmErr);
+      replyText = "I understand. How else may I help you today?";
+    }
+
+    // Synthesize real AI voice response with Cartesia Sonic using agent's voice
     const audioBuffer = await cartesia.generateSpeech({
       transcript: replyText,
       voiceId,

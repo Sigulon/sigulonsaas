@@ -30,6 +30,9 @@ CALL_TERMINAL_MIRROR = {
     "busy": "busy",
     "no_answer": "no_answer",
 }
+# Live conversation states (lowercased, matching latest_call_for_contact).
+# The sweep must never fail these with the short dial-stale window.
+CALL_LIVE = ("answered", "in_progress")
 CALL_ACTIVE = ("dialing", "calling", "ringing")
 DISPATCH_BATCH_SIZE = 500
 
@@ -226,6 +229,18 @@ def _process_job(ctx: WorkerContext, job: dict[str, Any]) -> str:
         return "retry_scheduled"
     layer_keys = [key for key, _, _ in layers]
 
+    # In-flight guard: exactly one job may dial a contact. A sweep requeue
+    # (or a redelivered job) racing the original must not double-dial — the
+    # loser releases its slots and drops without touching the provider.
+    if cc is not None and job.get("campaign_id"):
+        if not store_mod.claim_contact_for_dial(
+            ctx.database, job["campaign_id"], job["contact_id"]
+        ):
+            queueing_mod.release_layers(ctx.redis, layer_keys)
+            log.info("skip_duplicate_job (contact=%s already claimed)",
+                     job["contact_id"])
+            return "dropped"
+
     # Call row: campaign jobs mint one per dial; single dials reuse the row
     # the web route created (it carries the caller's metadata).
     if single_call is not None:
@@ -255,6 +270,12 @@ def _process_job(ctx: WorkerContext, job: dict[str, Any]) -> str:
         if not call_id:
             queueing_mod.release_layers(ctx.redis, layer_keys)
             queueing_mod.schedule_retry(ctx.redis, job, 60)
+            if cc is not None:
+                # Claim won dialing above but no row was minted — give the
+                # contact back so the scheduled retry can claim it.
+                store_mod.set_contact_status(
+                    ctx.database, job["campaign_id"], job["contact_id"], "queued",
+                )
             return "retry_scheduled"
 
     try:
@@ -286,8 +307,51 @@ def _process_job(ctx: WorkerContext, job: dict[str, Any]) -> str:
         # orphan `queued` call lingers. Retries mint a fresh row per attempt.
         store_mod.update_call(ctx.database, call_id, {"status": "failed"})
         if failures >= max_attempts:
+            # Singles: the failed attempt row IS the terminal state — keep
+            # it failed. (_terminal would overwrite with cancelled, which
+            # is correct for preflight skips but not for dial exhaustion.)
+            if single_call is not None and cc is None:
+                return "terminal:failed"
             return _terminal(ctx, job, cc, single_call, "failed", f"dial-failed:{exc}")
         delay = retry_delay_seconds(cfg.retry_base_seconds, failures)
+        if single_call is not None and cc is None:
+            # Option A: mint a NEW queued row per attempt. Retries must not
+            # reuse rows because latest_queued_call only matches QUEUED —
+            # reusing the just-failed row would make every retry drop.
+            next_id = store_mod.insert_call(ctx.database, {
+                "org_id": job["org_id"],
+                "agent_id": agent["id"],
+                "campaign_id": None,
+                "contact_id": job["contact_id"],
+                "phone_number_id": number["id"],
+                "provider": "livekit",
+                "provider_call_id": dialer_mod.room_name_for_call(
+                    f"preview-{job['contact_id']}-retry-{failures}"),
+                "direction": "outbound",
+                "to_number": contact.get("phone_number"),
+                "from_number": number["phone_number"],
+                "status": "queued",
+                "duration_seconds": 0,
+                "transcript": [],
+                "metadata": {
+                    "normalized_to": to_e164,
+                    "attempt": failures + 1,
+                    "source": "campaign-worker",
+                    "retry_of": call_id,
+                    "parent_call_id": call_id,
+                },
+            })
+            if next_id:
+                queueing_mod.schedule_retry(
+                    ctx.redis, dict(job, attempt=failures,
+                                    single_call_id=next_id), delay)
+                return "retry_scheduled"
+            # Mint failed (DB down): fall back to requeueing the same row
+            # so the retry is not lost.
+            store_mod.update_call(ctx.database, call_id, {"status": "queued"})
+            queueing_mod.schedule_retry(
+                ctx.redis, dict(job, attempt=failures), delay)
+            return "retry_scheduled"
         queueing_mod.schedule_retry(ctx.redis, job, delay)
         if cc is not None:
             store_mod.set_contact_status(
@@ -347,6 +411,11 @@ def sweep_campaign(ctx: WorkerContext, campaign_id: str, now: datetime) -> dict[
     cutoff = (now - timedelta(seconds=cfg.stale_after_seconds)).isoformat()
     stats = {"requeued": 0, "healed": 0, "failed_stale": 0, "dispatched": 0}
 
+    # Queued staleness uses the same cutoff-guarded query as active:
+    # lastAttemptAt (set when the contact became queued) must be older than
+    # stale_after_seconds (900s), far above the legitimate queue wait
+    # (brpop poll ~5s + slot/dial setup). Fresh queued jobs are never
+    # requeued — the atomic claim in _process_job is the second guard.
     stale_queued = store_mod.stale_contacts(
         ctx.database, campaign_id, ("queued",), cutoff
     )
@@ -367,7 +436,7 @@ def sweep_campaign(ctx: WorkerContext, campaign_id: str, now: datetime) -> dict[
         ctx.database, campaign_id, CALL_ACTIVE, cutoff
     )
     for row in stale_active:
-        if _heal_stale_active(ctx, campaign_id, row):
+        if _heal_stale_active(ctx, campaign_id, row, now):
             stats["healed"] += 1
         else:
             stats["failed_stale"] += 1
@@ -438,27 +507,66 @@ def _dispatch_next_batch(ctx: WorkerContext, campaign_id: str) -> int:
         queueing_mod.release_dispatch_lock(ctx.redis, campaign_id, token)
 
 
-def _heal_stale_active(ctx: WorkerContext, campaign_id: str, row: dict) -> bool:
+def _live_cutoff(ctx: WorkerContext, now: datetime) -> datetime:
+    """Conservative cutoff for answered calls: max_call + grace, never short."""
+    max_call = int(getattr(ctx.config, "max_call_seconds", 1800) or 1800)
+    grace = int(getattr(ctx.config, "answered_stale_grace_seconds", 300) or 300)
+    return now - timedelta(seconds=max_call + grace)
+
+
+def _row_time(row: dict) -> Optional[datetime]:
+    """Contact's last attempt as aware datetime, or None when unknown."""
+    raw = row.get("last_attempt_at")
+    if not raw:
+        return None
+    try:
+        text = str(raw).strip().replace("Z", "+00:00")
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _heal_stale_active(
+    ctx: WorkerContext, campaign_id: str, row: dict, now: Optional[datetime] = None
+) -> bool:
     """Reconcile a contact stuck mid-call: mirror a terminal call, else fail.
 
-    Returns True when the contact left the active set (healed or failed).
+    Returns True when the contact left the active set (healed, mirrored, or
+    live-skipped) and False only when it was terminalized as failed.
+    Live calls (answered/in_progress) are never failed inside their
+    max_call_seconds + grace window. Sweep failures tag the call row with
+    ``metadata.fail_reason=stale_sweep`` so room_finished can recover them.
     Webhook misses heal forward; truly dead dials terminalize. Either way
     the contact converges — the sweep never leaves it behind.
     """
+    now = now or datetime.now(timezone.utc)
     contact_id = row["contact_id"]
     previous = row.get("call_status")
     latest = store_mod.latest_call_for_contact(ctx.database, campaign_id, contact_id)
-    if latest and latest.get("status") in CALL_TERMINAL_MIRROR:
+    if latest and str(latest.get("status") or "").lower() in CALL_TERMINAL_MIRROR:
         store_mod.set_contact_status(
             ctx.database, campaign_id, contact_id,
-            CALL_TERMINAL_MIRROR[latest["status"]],
+            CALL_TERMINAL_MIRROR[str(latest["status"]).lower()],
         )
         return True
-    if latest and latest.get("status") not in ("completed", "failed", "busy",
+    if latest and str(latest.get("status") or "").lower() in CALL_LIVE:
+        # Conservative live guard: only heal answered calls past
+        # max_call_seconds + grace. Within the window, leave them alone —
+        # the room_finished webhook owns the terminal transition.
+        row_dt = _row_time(row)
+        if row_dt is None or row_dt > _live_cutoff(ctx, now):
+            log.info("contact %s live (%s) — skipping sweep heal",
+                     contact_id, latest.get("status"))
+            return True
+        # Past the live ceiling: fall through to fail as a stuck call.
+    if latest and str(latest.get("status") or "").lower() not in ("completed", "failed", "busy",
                                                "no_answer", "cancelled", "voicemail"):
-        store_mod.update_call(ctx.database, latest["id"], {"status": "failed"})
+        store_mod.fail_call_as_stale(ctx.database, latest["id"])
     store_mod.set_contact_status(ctx.database, campaign_id, contact_id, "failed")
-    log.warning("contact %s stale in %s — terminalized as failed",
+    log.warning("contact %s stale in %s — terminalized as failed (stale_sweep)",
                 contact_id, previous)
     return False
 

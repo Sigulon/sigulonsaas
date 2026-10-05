@@ -93,3 +93,99 @@ export function isPlivoDualRunEnabled(): boolean {
 export function hashPayload(payload: unknown): string {
   return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
+
+export const LIVEKIT_INFERENCE_GATEWAY = "https://agent-gateway.livekit.cloud/v1";
+export const LIVEKIT_DEFAULT_LLM = "google/gemini-2.5-flash";
+
+/**
+ * Creates an inference access token (JWT) for LiveKit Cloud's hosted AI models.
+ */
+export function createLiveKitInferenceToken(
+  apiKey: string = process.env.LIVEKIT_API_KEY || "",
+  apiSecret: string = process.env.LIVEKIT_API_SECRET || "",
+  ttlSeconds: number = 600
+): string {
+  if (!apiKey || !apiSecret) {
+    throw new Error("LIVEKIT_API_KEY and LIVEKIT_API_SECRET are required for LiveKit Inference");
+  }
+  const header = { alg: "HS256", typ: "JWT" };
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    inference: { perform: true },
+    sub: "agent",
+    iss: apiKey,
+    nbf: now - 5,
+    exp: now + ttlSeconds,
+  };
+
+  const b64 = (obj: unknown) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+  const unsignedToken = `${b64(header)}.${b64(payload)}`;
+  const signature = crypto.createHmac("sha256", apiSecret).update(unsignedToken).digest("base64url");
+  return `${unsignedToken}.${signature}`;
+}
+
+/**
+ * Executes chat completion directly against LiveKit Cloud hosted inference.
+ * Uses Google Gemini 2.5 Flash via LiveKit without third-party LLM providers.
+ */
+export async function generateLiveKitChatCompletion(params: {
+  messages: Array<{ role: string; content: string }>;
+  systemPrompt?: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+}): Promise<string> {
+  const {
+    messages,
+    systemPrompt,
+    model = LIVEKIT_DEFAULT_LLM,
+    temperature = 0.7,
+    maxTokens = 150,
+  } = params;
+
+  const token = createLiveKitInferenceToken();
+
+  const formattedMessages: Array<{ role: string; content: string }> = [];
+  if (systemPrompt) {
+    formattedMessages.push({
+      role: "system",
+      content: `${systemPrompt}\n\nKeep spoken voice replies natural, polite, and at most 2 short sentences. Do not use asterisks, markdown, emojis, or bullet points.`,
+    });
+  }
+
+  for (const m of messages) {
+    if (m.role && m.content) {
+      formattedMessages.push({
+        role: m.role === "assistant" || m.role === "agent" ? "assistant" : "user",
+        content: String(m.content),
+      });
+    }
+  }
+
+  const res = await fetch(`${LIVEKIT_INFERENCE_GATEWAY}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages: formattedMessages,
+      temperature,
+      max_tokens: maxTokens,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => "");
+    throw new Error(`LiveKit Inference error (${res.status}): ${errorText}`);
+  }
+
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+
+  const reply = data.choices?.[0]?.message?.content?.trim() || "";
+  return reply;
+}
+

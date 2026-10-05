@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 import {
   PhoneCall,
   PhoneOff,
@@ -15,6 +16,8 @@ import {
   User,
   Sparkles,
   Radio,
+  CheckCircle2,
+  ExternalLink,
 } from "lucide-react";
 
 interface BrowserCallPlaygroundProps {
@@ -32,30 +35,7 @@ interface Message {
   time: string;
 }
 
-const QUICK_PROMPTS: Record<string, string[]> = {
-  hi: [
-    "नमस्ते! आप क्या सेवाएँ प्रदान करते हैं?",
-    "इसकी कीमत कितनी होगी?",
-    "क्या मैं कल सुबह 11 बजे का समय बुक कर सकता हूँ?",
-    "आपका कार्यालय कहाँ स्थित है?",
-  ],
-  te: [
-    "నమస్కారం! మీ సేవలు ఏమిటి?",
-    "దీని ధర ఎంత అవుతుంది?",
-    "రేపు ఉదయం 11 గంటలకు అపాయింట్‌మెంట్ బుక్ చేయవచ్చా?",
-  ],
-  ta: [
-    "வணக்கம்! உங்கள் சேவைகள் என்ன?",
-    "இதன் கட்டணம் எவ்வளவு?",
-    "நாளை காலை முன்பதிவு செய்ய முடியுமா?",
-  ],
-  en: [
-    "Hello! What services do you offer?",
-    "How much does this cost?",
-    "Can I schedule an appointment for tomorrow at 11 AM?",
-    "Where are you located?",
-  ],
-};
+
 
 export function BrowserCallPlayground({
   agentId,
@@ -75,9 +55,15 @@ export function BrowserCallPlayground({
   const [isListening, setIsListening] = useState(false);
   const [handsFree, setHandsFree] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSavingCall, setIsSavingCall] = useState(false);
+  const [savedCallResult, setSavedCallResult] = useState<{ callId: string; recordingUrl?: string; turnsCount?: number } | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const callIdRef = useRef<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const micStreamRef = useRef<MediaStream | null>(null);
 
   /** Minimal Web Speech API surface (full lib.dom types lag vendor APIs). */
   interface SpeechRecognitionResultEvent {
@@ -406,13 +392,37 @@ export function BrowserCallPlayground({
     setConnecting(true);
     setError(null);
     setMessages([]);
+    setSavedCallResult(null);
 
     try {
-      // Request mic permission on user click gesture so audio autoplay & speech work seamlessly
-      if (navigator.mediaDevices?.getUserMedia) {
-        await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => {});
+      // 1. Request mic permission and setup MediaRecorder to capture audio
+      let micStream: MediaStream | null = null;
+      if (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          micStreamRef.current = micStream;
+        } catch (e) {
+          console.warn("Microphone access check:", e);
+        }
       }
 
+      if (micStream && typeof MediaRecorder !== "undefined") {
+        audioChunksRef.current = [];
+        try {
+          const recorder = new MediaRecorder(micStream);
+          recorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+              audioChunksRef.current.push(event.data);
+            }
+          };
+          recorder.start(1000);
+          mediaRecorderRef.current = recorder;
+        } catch (e) {
+          console.warn("MediaRecorder start check:", e);
+        }
+      }
+
+      // 2. Initialize call session in backend (creates Call record in MongoDB)
       const res = await fetch(`/api/agents/${agentId}/test-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -430,6 +440,9 @@ export function BrowserCallPlayground({
       }
 
       const data = await res.json();
+      if (data.callId) {
+        callIdRef.current = data.callId;
+      }
       setIsInCall(true);
 
       const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -453,7 +466,7 @@ export function BrowserCallPlayground({
     }
   };
 
-  const handleEndCall = () => {
+  const handleEndCall = async () => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = "";
@@ -462,10 +475,64 @@ export function BrowserCallPlayground({
     setIsInCall(false);
     setIsAgentSpeaking(false);
     setIsProcessingTurn(false);
+
+    // Stop recorder
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((track) => track.stop());
+      micStreamRef.current = null;
+    }
+
+    const currentCallId = callIdRef.current;
+    if (!currentCallId) return;
+
+    setIsSavingCall(true);
+
+    try {
+      // Encode recorded audio chunks to base64 for Cloudflare R2 upload
+      let audioBase64: string | undefined;
+      if (audioChunksRef.current.length > 0) {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const reader = new FileReader();
+        audioBase64 = await new Promise<string>((resolve) => {
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            resolve(result || "");
+          };
+          reader.readAsDataURL(audioBlob);
+        });
+      }
+
+      const res = await fetch(`/api/agents/${agentId}/test-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "end_call",
+          callId: currentCallId,
+          durationSeconds: callDuration,
+          transcript: messagesRef.current,
+          audioBase64,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setSavedCallResult({
+          callId: currentCallId,
+          recordingUrl: data.recordingUrl,
+          turnsCount: data.turnsCount || messagesRef.current.length,
+        });
+      }
+    } catch (e) {
+      console.warn("End call persistence check:", e);
+    } finally {
+      setIsSavingCall(false);
+    }
   };
 
-  const langKey = (language || "en").toLowerCase().split("-")[0];
-  const quickPromptsList = QUICK_PROMPTS[langKey] || QUICK_PROMPTS.en;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950 space-y-6">
@@ -542,6 +609,31 @@ export function BrowserCallPlayground({
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
           {error}
+        </div>
+      )}
+
+      {isSavingCall && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-950/30 p-3.5 text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+          <span>Saving voice recording to Cloudflare R2 and persisting transcription...</span>
+        </div>
+      )}
+
+      {savedCallResult && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/30 p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+            <span>
+              Voice recording uploaded to <strong>Cloudflare R2</strong> (sigulon-storage) & {savedCallResult.turnsCount || "turn"} transcription turns saved to <strong>Call Logs</strong>.
+            </span>
+          </div>
+          <Link
+            href="/calls"
+            className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:text-emerald-800 underline dark:text-emerald-400 shrink-0"
+          >
+            <span>View in Call Logs</span>
+            <ExternalLink className="h-3 w-3" />
+          </Link>
         </div>
       )}
 
@@ -682,24 +774,7 @@ export function BrowserCallPlayground({
             </label>
           </div>
 
-          {/* Quick Speech Chips (1-Click Spoken Questions) */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-slate-400 mr-1 flex items-center gap-1">
-              <Sparkles className="h-3 w-3 text-indigo-500" />
-              1-Click Questions:
-            </span>
-            {quickPromptsList.map((promptText, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => handleSendMessage(promptText)}
-                disabled={isProcessingTurn || isAgentSpeaking}
-                className="text-[11px] rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-700 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 transition-all cursor-pointer disabled:opacity-50"
-              >
-                {promptText}
-              </button>
-            ))}
-          </div>
+
 
           {/* Fallback input form for noisy environments or text users */}
           <form

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { WebhookReceiver } from "livekit-server-sdk";
 import {
   CallRepository,
+  CallModel,
   CampaignRepository,
   CampaignContactModel,
   BillingRepository,
@@ -191,10 +192,33 @@ export async function POST(req: NextRequest) {
           idempotencyKey: `terminal:${call._id}`,
         }).catch(() => null);
         if (terminalized) {
-          await CallRepository.transitionState(call._id, "COMPLETED", {
-            endedAt: new Date(),
-            durationSeconds: duration,
-          } as never).catch(() => null);
+          // Sweep recovery: a stale-sweep may have forced FAILED on a call
+          // that later completed legitimately. FAILED is terminal in the
+          // state machine, so COMPLETED cannot override it via
+          // transitionState — allow the override ONLY when the failure was
+          // tagged stale_sweep. All other FAILED rows stay terminal.
+          const isSweepRecovery =
+            call.status === "FAILED" &&
+            (call.metadata as Record<string, unknown> | undefined)?.["fail_reason"] === "stale_sweep";
+          if (isSweepRecovery) {
+            await CallModel.findOneAndUpdate(
+              { _id: call._id, status: "FAILED" },
+              {
+                $set: {
+                  status: "COMPLETED",
+                  endedAt: new Date(),
+                  durationSeconds: duration,
+                  "metadata.sweep_recovered": true,
+                },
+                $unset: { "metadata.fail_reason": "" },
+              }
+            ).exec().catch(() => null);
+          } else {
+            await CallRepository.transitionState(call._id, "COMPLETED", {
+              endedAt: new Date(),
+              durationSeconds: duration,
+            } as never).catch(() => null);
+          }
           try {
             await settleCallCredits(null, call.organizationId.toString(), call._id.toString(), usageCredits);
           } catch (err) {
@@ -206,7 +230,11 @@ export async function POST(req: NextRequest) {
                 campaignId: call.campaignId,
                 contactId: call.contactId,
                 organizationId: call.organizationId,
-                callStatus: { $in: ["pending", "queued", "dialing", "ringing", "answered"] },
+                callStatus: {
+                  $in: isSweepRecovery
+                    ? ["pending", "queued", "dialing", "ringing", "answered", "failed"]
+                    : ["pending", "queued", "dialing", "ringing", "answered"],
+                },
               },
               { $set: { callStatus: "completed", lastAttemptAt: new Date() } }
             ).exec().catch(() => null);
@@ -233,8 +261,8 @@ export async function POST(req: NextRequest) {
             {
               $set: {
                 organizationId: call.organizationId,
-                storageProvider: "gcs",
-                bucket: process.env.GCS_RECORDINGS_BUCKET || "",
+                storageProvider: "r2",
+                bucket: process.env.R2_BUCKET_NAME || "sigulon-storage",
                 objectKey: String(file?.filename || recordingUrl),
                 status: "ready",
               },

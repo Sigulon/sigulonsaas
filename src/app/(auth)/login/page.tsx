@@ -1,30 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
-import { Radio, AlertCircle, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Radio } from "lucide-react";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
+    setError("");
+    setIsLoading(true);
 
     try {
       const res = await fetch("/api/auth/login", {
@@ -33,100 +24,99 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to sign in");
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to sign in. Please check your credentials.");
       }
 
       router.push("/dashboard");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to sign in");
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
-      <Card className="w-full max-w-md shadow-xl border-slate-200 dark:border-slate-800">
-        <CardHeader className="text-center pb-4">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 mb-2">
-            <Radio className="h-6 w-6" />
-          </div>
-          <CardTitle className="text-xl">Sign in to Sigulon Voice</CardTitle>
-          <CardDescription className="text-xs">
-            Manage your AI phone agents and bulk campaigns
-          </CardDescription>
-        </CardHeader>
+    <div className="w-full max-w-md space-y-8">
+      <div className="flex flex-col items-center">
+        <div className="flex items-center gap-2 text-blue-600 mb-6">
+          <Radio className="w-8 h-8" />
+          <span className="text-2xl font-bold text-gray-900 tracking-tight">Sigulon</span>
+        </div>
+        <h2 className="text-center text-2xl font-semibold tracking-tight text-gray-900">
+          Sign in to your account
+        </h2>
+        <p className="mt-2 text-center text-sm text-gray-600">
+          Welcome back to Sigulon SaaS platform
+        </p>
+      </div>
 
-        <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
-            {error && (
-              <div className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-400">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
+      <div className="bg-white px-4 py-8 shadow-sm sm:rounded-xl sm:px-10 border border-gray-100">
+        <form className="space-y-6" onSubmit={handleSubmit}>
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
 
-            <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                Business Email
-              </label>
-              <Input
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              Email address
+            </label>
+            <div className="mt-2">
+              <input
+                id="email"
+                name="email"
                 type="email"
-                placeholder="name@company.com"
+                autoComplete="email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                required
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm"
+                placeholder="you@example.com"
               />
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                Password
-              </label>
-              <Input
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              Password
+            </label>
+            <div className="mt-2">
+              <input
+                id="password"
+                name="password"
                 type="password"
-                placeholder="••••••••"
+                autoComplete="current-password"
+                required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                required
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm"
+                placeholder="••••••••"
               />
             </div>
+          </div>
 
-            <Button
+          <div>
+            <button
               type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
+              disabled={isLoading}
+              className="flex w-full justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                "Sign In to Workspace"
-              )}
-            </Button>
+              {isLoading ? "Signing in..." : "Sign in"}
+            </button>
+          </div>
+        </form>
 
-            <div className="text-center text-xs text-slate-500 pt-2">
-              <Link
-                href="/forgot-password"
-                className="font-semibold text-indigo-600 hover:underline"
-              >
-                Forgot password?
-              </Link>
-            </div>
-
-            <div className="text-center text-xs text-slate-500 pt-2">
-              Don&apos;t have an account?{" "}
-              <Link
-                href="/signup"
-                className="font-semibold text-indigo-600 hover:underline"
-              >
-                Create an account
-              </Link>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+        <div className="mt-6 text-center text-sm">
+          <span className="text-gray-500">Don't have an account? </span>
+          <Link href="/signup" className="font-semibold text-blue-600 hover:text-blue-500 transition-colors">
+            Sign up
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }

@@ -254,6 +254,40 @@ def update_call(client: Any, call_id: str, patch: dict[str, Any]) -> bool:
     return True
 
 
+def fail_call_as_stale(client: Any, call_id: str) -> bool:
+    """Mark a call row failed by the stale sweep, tagging the reason.
+
+    Uses a dotted ``metadata.fail_reason`` write so existing metadata
+    (dispatch_id, room, attempt, ...) is merged, not replaced. The
+    LiveKit ``room_finished`` webhook allows COMPLETED to override a
+    FAILED row ONLY when this tag is present.
+    """
+    if _is_mock(client):
+        try:
+            rows = client.table("calls").rows
+            for row in rows:
+                if str(row.get("id")) == str(call_id):
+                    meta = dict(row.get("metadata") or {})
+                    meta["fail_reason"] = "stale_sweep"
+                    row["status"] = "failed"
+                    row["metadata"] = meta
+                    return True
+            return False
+        except Exception:
+            return False
+    from bson import ObjectId
+    try:
+        q = {"_id": ObjectId(call_id)} if ObjectId.is_valid(call_id) else {"_id": call_id}
+        client.calls.update_one(q, {"$set": {
+            "status": "FAILED",
+            "metadata.fail_reason": "stale_sweep",
+            "updatedAt": datetime.now(timezone.utc),
+        }})
+        return True
+    except Exception:
+        return False
+
+
 def set_contact_status(
     client: Any,
     campaign_id: str,
@@ -343,6 +377,47 @@ def running_campaign_ids(client: Any, limit: int = 200) -> list[str]:
         return []
 
 
+def _parse_cutoff(cutoff_iso: Any) -> datetime:
+    """Parse sweep cutoff to an aware UTC datetime for BSON Date comparison.
+
+    The mock path stores ISO strings; Mongo stores ``lastAttemptAt`` as a
+    BSON Date. Both paths must use identical staleness semantics.
+    On parse failure return datetime.min (fail-safe: nothing is stale).
+    """
+    try:
+        if isinstance(cutoff_iso, datetime):
+            dt = cutoff_iso
+        else:
+            text = str(cutoff_iso or "").strip().replace("Z", "+00:00")
+            dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _is_stale_mock_row(row: dict[str, Any], cutoff_iso: str) -> bool:
+    """Identical semantics to the Mongo filter below.
+
+    Stale when ``last_attempt_at < cutoff``. Rows with a missing/empty
+    ``last_attempt_at`` are stale ONLY if ``updated_at`` or ``created_at``
+    is also older than the cutoff (conservative: never kill live without
+    evidence of age).
+    """
+    last = row.get("last_attempt_at")
+    if last:
+        try:
+            return str(last) < str(cutoff_iso)
+        except Exception:
+            return False
+    for fallback_key in ("updated_at", "created_at"):
+        fallback = row.get(fallback_key)
+        if fallback and str(fallback) < str(cutoff_iso):
+            return True
+    return False
+
+
 def stale_contacts(
     client: Any,
     campaign_id: str,
@@ -353,24 +428,35 @@ def stale_contacts(
     """Contacts stuck in `statuses` with no attempt since `cutoff_iso`."""
     if _is_mock(client):
         try:
-            return (
+            rows = (
                 client.table("campaign_contacts")
                 .select("campaign_id, contact_id, call_status, attempt_count, last_attempt_at")
                 .eq("campaign_id", campaign_id)
                 .in_("call_status", list(statuses))
-                .lt("last_attempt_at", cutoff_iso)
                 .order("contact_id")
-                .limit(limit)
+                .limit(limit * 5)
                 .execute()
             ).data or []
+            stale = [r for r in rows if _is_stale_mock_row(r, cutoff_iso)]
+            stale.sort(key=lambda r: str(r.get("contact_id") or ""))
+            return stale[:limit]
         except Exception:
             return []
     from bson import ObjectId
     try:
         c_oid = ObjectId(campaign_id) if ObjectId.is_valid(campaign_id) else campaign_id
+        cutoff_dt = _parse_cutoff(cutoff_iso)
+        # Mongo field is lastAttemptAt (BSON Date). Missing timestamps are
+        # stale only when updatedAt/createdAt prove age — never kill live
+        # contacts just because a timestamp is absent.
         docs = list(client.campaign_contacts.find({
             "campaignId": c_oid,
             "callStatus": {"$in": list(statuses)},
+            "$or": [
+                {"lastAttemptAt": {"$lt": cutoff_dt}},
+                {"lastAttemptAt": None, "updatedAt": {"$lt": cutoff_dt}},
+                {"lastAttemptAt": None, "createdAt": {"$lt": cutoff_dt}},
+            ],
         }).limit(limit))
         return [
             {
@@ -583,6 +669,53 @@ def claim_next_initial_batch(
     return claimed
 
 
+def claim_contact_for_dial(
+    client: Any, campaign_id: str, contact_id: str
+) -> bool:
+    """Atomically claim a campaign contact for dialing (in-flight guard).
+
+    Transitions ``pending``/``queued`` → ``dialing`` via a single
+    ``find_one_and_update``. Returns True for the single winner; False when
+    another job already owns the contact (duplicate job → skip without
+    dialing). Restamps ``lastAttemptAt`` so the sweep measures staleness
+    from this claim, not from an older queueing.
+    """
+    if _is_mock(client):
+        try:
+            for row in client.table("campaign_contacts").rows:
+                if (
+                    row.get("campaign_id") == campaign_id
+                    and str(row.get("contact_id")) == str(contact_id)
+                    and row.get("call_status") in ("pending", "queued")
+                ):
+                    row["call_status"] = "dialing"
+                    row["last_attempt_at"] = utcnow_iso()
+                    return True
+            return False
+        except Exception:
+            return False
+    from bson import ObjectId
+    try:
+        from pymongo import ReturnDocument
+        c_oid = ObjectId(campaign_id) if ObjectId.is_valid(campaign_id) else campaign_id
+        ct_oid = ObjectId(contact_id) if ObjectId.is_valid(contact_id) else contact_id
+        doc = client.campaign_contacts.find_one_and_update(
+            {
+                "campaignId": c_oid,
+                "contactId": ct_oid,
+                "callStatus": {"$in": ["pending", "queued"]},
+            },
+            {"$set": {
+                "callStatus": "dialing",
+                "lastAttemptAt": datetime.now(timezone.utc),
+            }},
+            return_document=ReturnDocument.AFTER,
+        )
+        return doc is not None
+    except Exception:
+        return False
+
+
 def restore_initial_batch_claims(
     client: Any, campaign_id: str, claim_ids: list[str]
 ) -> None:
@@ -638,7 +771,9 @@ __all__ = [
     "NONTERMINAL_CONTACT",
     "ACTIVE_BATCH_CONTACT",
     "claim_next_initial_batch",
+    "claim_contact_for_dial",
     "complete_campaign",
+    "fail_call_as_stale",
     "get_agent",
     "get_campaign",
     "get_campaign_contact",

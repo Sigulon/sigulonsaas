@@ -1,52 +1,49 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 export function proxy(request: NextRequest) {
-  const sessionToken = request.cookies.get("sigulon_session")?.value;
-  const pathname = request.nextUrl.pathname;
+  const { pathname } = request.nextUrl;
+  const hasSession = request.cookies.has('sigulon_session');
 
-  const isAuthPage =
-    pathname.startsWith("/login") || pathname.startsWith("/signup");
+  // Define public routes that don't need authentication
+  const isPublicRoute = 
+    pathname === '/login' ||
+    pathname === '/signup' ||
+    pathname.startsWith('/api/auth/') ||
+    pathname.startsWith('/api/webhooks/') ||
+    pathname.startsWith('/api/internal/') ||
+    pathname === '/health' ||
+    pathname === '/ready' ||
+    pathname === '/api/health';
 
-  const isPublicApi =
-    pathname.startsWith("/api/auth/") ||
-    pathname.startsWith("/api/webhooks/") ||
-    // /api/internal/ uses its own service-to-service Bearer check
-    // (require_internal_secret), not the session cookie — it must stay
-    // reachable at the edge for callers with no cookie (worker/runtime).
-    pathname.startsWith("/api/internal/") ||
-    pathname.startsWith("/api/readyz") ||
-    pathname.startsWith("/api/healthz") ||
-    pathname === "/health" ||
-    pathname === "/ready";
+  const isAuthRoute = pathname === '/login' || pathname === '/signup';
 
-  const isStaticOrAsset =
-    pathname.startsWith("/_next") ||
-    pathname.includes("favicon.ico") ||
-    pathname.includes(".");
-
-  if (isStaticOrAsset) {
-    return NextResponse.next();
+  // If session cookie exists on /login or /signup → redirect to /dashboard
+  if (hasSession && isAuthRoute) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
-  // Auth applies in every environment (dev included): route-level session
-  // checks are the last line of defense, never the only one.
-
-  // Protect all dashboard pages and non-public API routes
-  if (!sessionToken && !isAuthPage && !isPublicApi && pathname !== "/") {
-    if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // If no session cookie on protected route:
+  // For API routes, return 401 JSON instead of redirecting to login page HTML
+  if (!hasSession && !isPublicRoute) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    return NextResponse.redirect(new URL("/login", request.url));
-  }
-
-  // If already logged in, redirect away from login/signup to dashboard
-  if (sessionToken && isAuthPage) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico, sitemap.xml, robots.txt
+     * - static image/asset extensions
+     */
+    '/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff|woff2)$).*)',
+  ],
 };

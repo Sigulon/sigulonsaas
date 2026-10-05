@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
 import { RecordingModel, connectToDatabase } from "@sigulon/database";
-import { generateDownloadUrl } from "@/lib/storage";
+import { generateDownloadUrlAsync } from "@/lib/storage";
 import mongoose from "mongoose";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +38,7 @@ export async function GET(
       return NextResponse.json({ error: "Recording not found" }, { status: 404 });
     }
 
-    const downloadUrl = generateDownloadUrl({
+    const downloadUrl = await generateDownloadUrlAsync({
       provider: recording.storageProvider,
       bucket: recording.bucket,
       objectKey: recording.objectKey,
