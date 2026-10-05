@@ -669,6 +669,53 @@ def claim_next_initial_batch(
     return claimed
 
 
+def claim_contact_for_dial(
+    client: Any, campaign_id: str, contact_id: str
+) -> bool:
+    """Atomically claim a campaign contact for dialing (in-flight guard).
+
+    Transitions ``pending``/``queued`` → ``dialing`` via a single
+    ``find_one_and_update``. Returns True for the single winner; False when
+    another job already owns the contact (duplicate job → skip without
+    dialing). Restamps ``lastAttemptAt`` so the sweep measures staleness
+    from this claim, not from an older queueing.
+    """
+    if _is_mock(client):
+        try:
+            for row in client.table("campaign_contacts").rows:
+                if (
+                    row.get("campaign_id") == campaign_id
+                    and str(row.get("contact_id")) == str(contact_id)
+                    and row.get("call_status") in ("pending", "queued")
+                ):
+                    row["call_status"] = "dialing"
+                    row["last_attempt_at"] = utcnow_iso()
+                    return True
+            return False
+        except Exception:
+            return False
+    from bson import ObjectId
+    try:
+        from pymongo import ReturnDocument
+        c_oid = ObjectId(campaign_id) if ObjectId.is_valid(campaign_id) else campaign_id
+        ct_oid = ObjectId(contact_id) if ObjectId.is_valid(contact_id) else contact_id
+        doc = client.campaign_contacts.find_one_and_update(
+            {
+                "campaignId": c_oid,
+                "contactId": ct_oid,
+                "callStatus": {"$in": ["pending", "queued"]},
+            },
+            {"$set": {
+                "callStatus": "dialing",
+                "lastAttemptAt": datetime.now(timezone.utc),
+            }},
+            return_document=ReturnDocument.AFTER,
+        )
+        return doc is not None
+    except Exception:
+        return False
+
+
 def restore_initial_batch_claims(
     client: Any, campaign_id: str, claim_ids: list[str]
 ) -> None:
@@ -724,6 +771,7 @@ __all__ = [
     "NONTERMINAL_CONTACT",
     "ACTIVE_BATCH_CONTACT",
     "claim_next_initial_batch",
+    "claim_contact_for_dial",
     "complete_campaign",
     "fail_call_as_stale",
     "get_agent",

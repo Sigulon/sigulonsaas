@@ -171,10 +171,35 @@ def decode_job(raw: Any) -> Optional[dict[str, Any]]:
     return normalized
 
 
+def retry_dedupe_key(job: dict[str, Any]) -> str:
+    """Idempotency key per logical retry: one entry per (contact, attempt)."""
+    org = job.get("org_id")
+    campaign = job.get("campaign_id") or "single"
+    contact = job.get("contact_id")
+    attempt = job.get("attempt", 0)
+    return f"sigulon:retry:dedup:{org}:{campaign}:{contact}:{attempt}"
+
+
 def schedule_retry(
     redis_client: Any, job: dict[str, Any], delay_seconds: float
 ) -> None:
-    """Park a job on the retry ZSET for ``delay_seconds`` from now."""
+    """Park a job on the retry ZSET for ``delay_seconds`` from now.
+
+    Idempotent per (contact_id, attempt) via a Redis ``SET NX`` dedupe key
+    with a TTL slightly above the job lifetime (delay + 1h processing
+    buffer). A duplicate schedule while the first is still parked is
+    skipped — the ZSET would otherwise accumulate a second member whenever
+    the re-encoding differs (e.g. max_attempts changed between paths).
+    """
+    try:
+        ttl = int(max(0.0, delay_seconds)) + 3600
+        acquired = redis_client.set(retry_dedupe_key(job), "1", ex=ttl, nx=True)
+        if not acquired:
+            log.info("skip duplicate retry (contact=%s attempt=%s)",
+                     job.get("contact_id"), job.get("attempt", 0))
+            return
+    except Exception:  # noqa: BLE001 - fail open, never drop a retry on Redis quirks
+        pass
     due_ms = int((time.time() + max(0.0, delay_seconds)) * 1000)
     redis_client.zadd(RETRY_ZSET, {encode_job(job): due_ms})
 
@@ -203,6 +228,12 @@ def claim_due_retries(redis_client: Any, limit: int) -> list[dict[str, Any]]:
                 job = decode_job(member)
                 if job is not None:
                     claimed.append(job)
+                    # Free the dedupe so a later retry for the same logical
+                    # attempt (e.g. slot refusal after claim) can schedule.
+                    try:
+                        redis_client.delete(retry_dedupe_key(job))
+                    except Exception:  # noqa: BLE001 - hygiene only
+                        pass
         except Exception as exc:  # noqa: BLE001
             log.warning("retry claim failed: %s", exc)
     return claimed
@@ -231,5 +262,6 @@ __all__ = [
     "heartbeat",
     "release_layers",
     "release_dispatch_lock",
+    "retry_dedupe_key",
     "schedule_retry",
 ]

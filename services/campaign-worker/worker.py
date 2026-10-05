@@ -229,6 +229,18 @@ def _process_job(ctx: WorkerContext, job: dict[str, Any]) -> str:
         return "retry_scheduled"
     layer_keys = [key for key, _, _ in layers]
 
+    # In-flight guard: exactly one job may dial a contact. A sweep requeue
+    # (or a redelivered job) racing the original must not double-dial — the
+    # loser releases its slots and drops without touching the provider.
+    if cc is not None and job.get("campaign_id"):
+        if not store_mod.claim_contact_for_dial(
+            ctx.database, job["campaign_id"], job["contact_id"]
+        ):
+            queueing_mod.release_layers(ctx.redis, layer_keys)
+            log.info("skip_duplicate_job (contact=%s already claimed)",
+                     job["contact_id"])
+            return "dropped"
+
     # Call row: campaign jobs mint one per dial; single dials reuse the row
     # the web route created (it carries the caller's metadata).
     if single_call is not None:
@@ -258,6 +270,12 @@ def _process_job(ctx: WorkerContext, job: dict[str, Any]) -> str:
         if not call_id:
             queueing_mod.release_layers(ctx.redis, layer_keys)
             queueing_mod.schedule_retry(ctx.redis, job, 60)
+            if cc is not None:
+                # Claim won dialing above but no row was minted — give the
+                # contact back so the scheduled retry can claim it.
+                store_mod.set_contact_status(
+                    ctx.database, job["campaign_id"], job["contact_id"], "queued",
+                )
             return "retry_scheduled"
 
     try:
@@ -350,6 +368,11 @@ def sweep_campaign(ctx: WorkerContext, campaign_id: str, now: datetime) -> dict[
     cutoff = (now - timedelta(seconds=cfg.stale_after_seconds)).isoformat()
     stats = {"requeued": 0, "healed": 0, "failed_stale": 0, "dispatched": 0}
 
+    # Queued staleness uses the same cutoff-guarded query as active:
+    # lastAttemptAt (set when the contact became queued) must be older than
+    # stale_after_seconds (900s), far above the legitimate queue wait
+    # (brpop poll ~5s + slot/dial setup). Fresh queued jobs are never
+    # requeued — the atomic claim in _process_job is the second guard.
     stale_queued = store_mod.stale_contacts(
         ctx.database, campaign_id, ("queued",), cutoff
     )
