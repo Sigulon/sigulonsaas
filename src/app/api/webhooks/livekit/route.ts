@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { WebhookReceiver } from "livekit-server-sdk";
+import { WebhookReceiver, AgentDispatchClient } from "livekit-server-sdk";
 import {
   CallRepository,
   CallModel,
@@ -7,12 +7,14 @@ import {
   CampaignContactModel,
   BillingRepository,
   WebhookEventModel,
+  PhoneNumberModel,
+  ContactRepository,
+  AgentRepository,
 } from "@sigulon/database";
 import { computeUsageCredits, reserveEstimateCredits, settleCallCredits } from "@/lib/credits";
-import { hashPayload, parseDispatchMetadata } from "@/lib/livekit";
+import { hashPayload, parseDispatchMetadata, LIVEKIT_AGENT_NAME, buildDispatchMetadata } from "@/lib/livekit";
 import { prewarmCallConfig } from "@/lib/redis";
 import { toCanonicalAgentConfig } from "@/lib/agent-config";
-import { AgentRepository } from "@sigulon/database";
 import { VOICE_STACK } from "@/lib/voice-config";
 
 export const dynamic = "force-dynamic";
@@ -80,39 +82,138 @@ export async function POST(req: NextRequest) {
       ? roomName.slice("sigulon-call-".length)
       : "";
 
-    switch (eventType) {
-      case "room_started": {
-        // Create Call + reserve credits. Room metadata carries {orgId, agentId}.
-        if (!roomMetadata) {
-          await markWebhookEvent(eventId, "processed");
-          return NextResponse.json({ success: true, ignored: true });
+    async function resolveInboundCall(
+      rName: string,
+      meta: ReturnType<typeof parseDispatchMetadata>,
+      part?: { identity?: string; attributes?: Record<string, string> }
+    ) {
+      // 1. If we already have metadata with orgId and agentId
+      if (meta?.orgId && meta?.agentId) {
+        return {
+          orgId: meta.orgId,
+          agentId: meta.agentId,
+          dialedNumber: meta.phoneNumber || "",
+          callerNumber: part?.identity || "",
+          customerContext: meta.customerContext,
+          direction: meta.direction || "inbound",
+        };
+      }
+
+      // 2. Otherwise extract from SIP participant attributes (LiveKit Telephony)
+      const attrs = part?.attributes || {};
+      const dialedNumber =
+        attrs["sip.phoneNumber"] ||
+        attrs["sip.trunkPhoneNumber"] ||
+        attrs["sip.calledNumber"] ||
+        "";
+      const callerNumber =
+        attrs["sip.callFrom"] ||
+        (part?.identity ? part.identity.replace(/^sip_/, "") : "");
+
+      if (!dialedNumber) return null;
+
+      // Map dialed phone number to tenant & assigned agent
+      const phoneDoc = await PhoneNumberModel.findOne({
+        phoneNumber: dialedNumber,
+        status: "active",
+      }).exec();
+
+      if (!phoneDoc || !phoneDoc.organizationId) {
+        console.warn(`[livekit/webhook] Inbound call to unmapped number: ${dialedNumber}`);
+        return null;
+      }
+
+      const orgId = phoneDoc.organizationId.toString();
+      let agentId = phoneDoc.agentId ? phoneDoc.agentId.toString() : "";
+
+      if (!agentId) {
+        // Fall back to tenant's first active agent
+        const activeAgents = await AgentRepository.findByOrg(orgId, { status: "active" }).catch(() => []);
+        const defaultAgent = activeAgents[0] || null;
+        if (defaultAgent) {
+          agentId = defaultAgent._id.toString();
         }
+      }
+
+      if (!agentId) {
+        console.warn(`[livekit/webhook] No active agent configured for tenant ${orgId}`);
+        return null;
+      }
+
+      // Resolve customer context if known
+      let customerContext: Record<string, unknown> | undefined = undefined;
+      if (callerNumber) {
+        const contact = await ContactRepository.findByNormalizedPhone(orgId, callerNumber).catch(() => null);
+        if (contact) {
+          customerContext = {
+            name: contact.name,
+            phone: contact.phone,
+            ...(contact.customFields || {}),
+          };
+        }
+      }
+
+      return {
+        orgId,
+        agentId,
+        dialedNumber,
+        callerNumber,
+        customerContext,
+        direction: "inbound" as const,
+      };
+    }
+
+    switch (eventType) {
+      case "room_started":
+      case "participant_joined": {
         let call = callIdFromRoom
           ? await CallRepository.findById(callIdFromRoom).catch(() => null)
-          : null;
+          : await CallRepository.findByProviderCallId(roomName).catch(() => null);
+
         if (!call) {
-          const agent = await AgentRepository.findById(roomMetadata.agentId, roomMetadata.orgId);
+          const inbound = await resolveInboundCall(
+            roomName,
+            roomMetadata,
+            event.participant as { identity?: string; attributes?: Record<string, string> }
+          );
+
+          if (!inbound) {
+            if (eventType === "room_started" && !roomMetadata) {
+              await markWebhookEvent(eventId, "processed");
+              return NextResponse.json({ success: true, ignored: true });
+            }
+            break;
+          }
+
+          const agent = await AgentRepository.findById(inbound.agentId, inbound.orgId);
           if (!agent) {
             await markWebhookEvent(eventId, "failed", "agent not found");
             return NextResponse.json({ error: "Agent not found" }, { status: 404 });
           }
+
           call = await CallRepository.create({
-            organizationId: roomMetadata.orgId,
+            organizationId: inbound.orgId,
             agentId: agent._id,
             agentVersionId: agent.currentVersionId,
             provider: "livekit",
             providerCallId: roomName,
-            direction: roomMetadata.direction || "inbound",
-            fromNumber: event.participant?.identity || "",
-            toNumber: "",
-            status: "CREATED",
-            metadata: { livekit_room: roomName, dispatch: roomMetadata },
+            direction: inbound.direction || "inbound",
+            fromNumber: inbound.callerNumber || event.participant?.identity || "",
+            toNumber: inbound.dialedNumber || "",
+            status: "IN_PROGRESS",
+            metadata: {
+              livekit_room: roomName,
+              dispatch: roomMetadata,
+              customerContext: inbound.customerContext,
+            },
           });
+
+          // Pre-warm config for voice worker
           try {
             const canonical = toCanonicalAgentConfig(
               {
                 id: agent._id.toString(),
-                org_id: roomMetadata.orgId,
+                org_id: inbound.orgId,
                 name: agent.name,
                 language: agent.config.identity.language,
                 voice_id: agent.config.voice.voiceId,
@@ -134,7 +235,37 @@ export async function POST(req: NextRequest) {
           } catch (err) {
             console.warn(`[livekit/webhook] redis pre-warm failed for ${call._id}:`, err);
           }
+
+          // If roomMetadata was missing (direct SIP trunk call), explicitly dispatch the voice agent now
+          if (!roomMetadata) {
+            try {
+              const url = process.env.LIVEKIT_URL || "";
+              const key = process.env.LIVEKIT_API_KEY || "";
+              const secret = process.env.LIVEKIT_API_SECRET || "";
+              const dispatchClient = new AgentDispatchClient(url, key, secret);
+              await dispatchClient.createDispatch(
+                roomName,
+                LIVEKIT_AGENT_NAME,
+                {
+                  metadata: buildDispatchMetadata({
+                    orgId: inbound.orgId,
+                    tenantId: inbound.orgId,
+                    agentId: inbound.agentId,
+                    callId: call._id.toString(),
+                    phoneNumber: inbound.dialedNumber,
+                    customerContext: inbound.customerContext,
+                    direction: "inbound",
+                    room: roomName,
+                  }),
+                }
+              );
+              console.info(`[livekit/webhook] Explicitly dispatched agent for inbound call room=${roomName}`);
+            } catch (dispatchErr) {
+              console.error(`[livekit/webhook] Agent dispatch failed for inbound call room=${roomName}:`, dispatchErr);
+            }
+          }
         }
+
         // Reserve credits via internal API logic (idempotent per call).
         try {
           await BillingRepository.reserveCallCredits({
@@ -145,31 +276,32 @@ export async function POST(req: NextRequest) {
         } catch (err) {
           console.error(`[livekit/webhook] reserve failed for ${call._id}:`, err);
         }
+
         await CallRepository.addEvent({
           callId: call._id,
           organizationId: call.organizationId,
-          type: "livekit.room_started",
-          data: { room: roomName },
-          idempotencyKey: `livekit-room-started:${roomName}`,
+          type: `livekit.${eventType}`,
+          data: { identity: event.participant?.identity || "", room: roomName },
+          idempotencyKey: `livekit-${eventType}:${eventId}`,
         });
+
+        if (eventType === "participant_joined" && !call.answeredAt) {
+          await CallRepository.transitionState(call._id, "ANSWERED", { answeredAt: new Date() } as never).catch(() => null);
+        }
         break;
       }
-      case "participant_joined":
       case "participant_left": {
         const call = callIdFromRoom
           ? await CallRepository.findById(callIdFromRoom).catch(() => null)
-          : null;
+          : await CallRepository.findByProviderCallId(roomName).catch(() => null);
         if (call) {
           await CallRepository.addEvent({
             callId: call._id,
             organizationId: call.organizationId,
-            type: `livekit.${eventType}`,
+            type: "livekit.participant_left",
             data: { identity: event.participant?.identity || "", room: roomName },
-            idempotencyKey: `livekit-${eventType}:${eventId}`,
+            idempotencyKey: `livekit-participant_left:${eventId}`,
           });
-          if (eventType === "participant_joined" && !call.answeredAt) {
-            await CallRepository.transitionState(call._id, "ANSWERED", { answeredAt: new Date() } as never).catch(() => null);
-          }
         }
         break;
       }

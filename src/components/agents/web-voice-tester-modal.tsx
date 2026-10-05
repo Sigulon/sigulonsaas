@@ -25,7 +25,7 @@ export function WebVoiceTesterModal({ isOpen, onClose, agent }: WebVoiceTesterMo
     >
       <div className="py-2">
         <BrowserCallPlayground
-          agentId={agent?.id || agent?.cartesia_agent_id || "demo"}
+          agentId={agent?.id || agent?.cartesia_agent_id || ""}
           agentName={agent?.name || "Voice Agent"}
           language={agent?.language || "hi"}
           voiceName={voice.name}

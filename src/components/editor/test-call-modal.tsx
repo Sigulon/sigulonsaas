@@ -15,15 +15,15 @@ interface TestCallModalProps {
 }
 
 export function TestCallModal({ isOpen, onClose, agentId, bundle }: TestCallModalProps) {
-  // Sample variable values state
-  const [sampleLeadName, setSampleLeadName] = useState("రమేష్");
-  const [samplePhone, setSamplePhone] = useState("+91 98765 43210");
+  // Optional variable values for test session
+  const [sampleLeadName, setSampleLeadName] = useState("");
+  const [samplePhone, setSamplePhone] = useState("");
   const [callActive, setCallActive] = useState(false);
 
   // Substitute variables in first response for the test call
-  const resolvedGreeting = bundle.first_response
-    .replace(/\{\{lead_name\}\}/g, sampleLeadName)
-    .replace(/\{\{phone\}\}/g, samplePhone);
+  const resolvedGreeting = (bundle.first_response || "")
+    .replace(/\{\{lead_name\}\}/g, sampleLeadName || "")
+    .replace(/\{\{phone\}\}/g, samplePhone || "");
 
   const handleStartCall = () => {
     setCallActive(true);
@@ -49,7 +49,7 @@ export function TestCallModal({ isOpen, onClose, agentId, bundle }: TestCallModa
           <div className="space-y-4">
             <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-3">
               <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-                Provide Sample Variable Values for Test Call:
+                Test Call Variables (Optional):
               </span>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div>
@@ -60,6 +60,7 @@ export function TestCallModal({ isOpen, onClose, agentId, bundle }: TestCallModa
                     type="text"
                     value={sampleLeadName}
                     onChange={(e) => setSampleLeadName(e.target.value)}
+                    placeholder="e.g. Lead name"
                     className="w-full rounded border px-2.5 py-1.5 bg-white dark:bg-slate-950 focus:outline-none"
                   />
                 </div>
@@ -71,6 +72,7 @@ export function TestCallModal({ isOpen, onClose, agentId, bundle }: TestCallModa
                     type="text"
                     value={samplePhone}
                     onChange={(e) => setSamplePhone(e.target.value)}
+                    placeholder="e.g. Phone number"
                     className="w-full rounded border px-2.5 py-1.5 bg-white dark:bg-slate-950 focus:outline-none"
                   />
                 </div>

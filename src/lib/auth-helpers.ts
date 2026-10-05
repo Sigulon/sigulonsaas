@@ -14,11 +14,6 @@ export interface OrgContext {
   cartesiaApiKey?: string;
 }
 
-/** Demo data bypasses are disabled to ensure real MongoDB data is always used. */
-export function isDemoModeEnabled(): boolean {
-  return false;
-}
-
 /**
  * Resolves the authenticated user's active organization context from MongoDB.
  *

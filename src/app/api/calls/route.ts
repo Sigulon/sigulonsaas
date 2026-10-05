@@ -176,7 +176,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { agentId, toNumber, metadata = {} } = body;
+    const {
+      agentId,
+      toNumber,
+      campaignId,
+      workflowId,
+      customerContext,
+      promptInjection,
+      voiceId,
+      metadata = {},
+    } = body;
 
     if (!agentId || !toNumber) {
       return NextResponse.json(
@@ -361,37 +370,57 @@ export async function POST(req: NextRequest) {
     try {
       const { AgentDispatchClient, SipClient } = await import("livekit-server-sdk") as unknown as {
         AgentDispatchClient: new (u: string, k: string, s: string) => {
-          createDispatch: (req: unknown) => Promise<{ dispatchId?: string; id?: string }>;
+          createDispatch: (room: string, agentName: string, opts?: { metadata?: string }) => Promise<{ dispatchId?: string; id?: string }>;
         };
         SipClient: new (u: string, k: string, s: string) => {
-          createSipParticipant: (req: unknown) => Promise<unknown>;
+          createSipParticipant: (
+            sipTrunkId: string,
+            number: string,
+            roomName: string,
+            opts?: {
+              fromNumber?: string;
+              participantIdentity?: string;
+              participantName?: string;
+              waitUntilAnswered?: boolean;
+            }
+          ) => Promise<unknown>;
         };
       };
       const url = process.env.LIVEKIT_URL || "";
       const key = process.env.LIVEKIT_API_KEY || "";
       const secret = process.env.LIVEKIT_API_SECRET || "";
       const dispatchClient = new AgentDispatchClient(url, key, secret);
-      const dispatch = await dispatchClient.createDispatch({
-        agentName: LIVEKIT_AGENT_NAME,
+      const dispatch = await dispatchClient.createDispatch(
         room,
-        metadata: buildDispatchMetadata({
-          orgId,
-          agentId: agent._id.toString(),
-          callId: call._id.toString(),
-          direction: "outbound",
-          room,
-        }),
-      });
+        LIVEKIT_AGENT_NAME,
+        {
+          metadata: buildDispatchMetadata({
+            orgId,
+            agentId: agent._id.toString(),
+            callId: call._id.toString(),
+            phoneNumber: normalized,
+            campaignId: campaignId ? String(campaignId) : undefined,
+            workflowId: workflowId ? String(workflowId) : undefined,
+            customerContext: (customerContext || metadata) as Record<string, unknown>,
+            promptInjection: promptInjection ? String(promptInjection) : undefined,
+            voiceId: voiceId ? String(voiceId) : undefined,
+            direction: "outbound",
+            room,
+          }),
+        }
+      );
       dispatchId = String(dispatch?.dispatchId || dispatch?.id || "");
       const sip = new SipClient(url, key, secret);
-      await sip.createSipParticipant({
-        roomName: room,
-        sipTrunkId: outboundTrunkId,
-        sipCallTo: normalized,
-        participantIdentity: normalized,
-        sipNumber: fromNumber,
-        waitUntilAnswered: true,
-      });
+      await sip.createSipParticipant(
+        outboundTrunkId,
+        normalized,
+        room,
+        {
+          fromNumber,
+          participantIdentity: normalized,
+          waitUntilAnswered: true,
+        }
+      );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "LiveKit dial failed";
       console.error("[api/calls] LiveKit dial failed:", message);
