@@ -307,8 +307,51 @@ def _process_job(ctx: WorkerContext, job: dict[str, Any]) -> str:
         # orphan `queued` call lingers. Retries mint a fresh row per attempt.
         store_mod.update_call(ctx.database, call_id, {"status": "failed"})
         if failures >= max_attempts:
+            # Singles: the failed attempt row IS the terminal state — keep
+            # it failed. (_terminal would overwrite with cancelled, which
+            # is correct for preflight skips but not for dial exhaustion.)
+            if single_call is not None and cc is None:
+                return "terminal:failed"
             return _terminal(ctx, job, cc, single_call, "failed", f"dial-failed:{exc}")
         delay = retry_delay_seconds(cfg.retry_base_seconds, failures)
+        if single_call is not None and cc is None:
+            # Option A: mint a NEW queued row per attempt. Retries must not
+            # reuse rows because latest_queued_call only matches QUEUED —
+            # reusing the just-failed row would make every retry drop.
+            next_id = store_mod.insert_call(ctx.database, {
+                "org_id": job["org_id"],
+                "agent_id": agent["id"],
+                "campaign_id": None,
+                "contact_id": job["contact_id"],
+                "phone_number_id": number["id"],
+                "provider": "livekit",
+                "provider_call_id": dialer_mod.room_name_for_call(
+                    f"preview-{job['contact_id']}-retry-{failures}"),
+                "direction": "outbound",
+                "to_number": contact.get("phone_number"),
+                "from_number": number["phone_number"],
+                "status": "queued",
+                "duration_seconds": 0,
+                "transcript": [],
+                "metadata": {
+                    "normalized_to": to_e164,
+                    "attempt": failures + 1,
+                    "source": "campaign-worker",
+                    "retry_of": call_id,
+                    "parent_call_id": call_id,
+                },
+            })
+            if next_id:
+                queueing_mod.schedule_retry(
+                    ctx.redis, dict(job, attempt=failures,
+                                    single_call_id=next_id), delay)
+                return "retry_scheduled"
+            # Mint failed (DB down): fall back to requeueing the same row
+            # so the retry is not lost.
+            store_mod.update_call(ctx.database, call_id, {"status": "queued"})
+            queueing_mod.schedule_retry(
+                ctx.redis, dict(job, attempt=failures), delay)
+            return "retry_scheduled"
         queueing_mod.schedule_retry(ctx.redis, job, delay)
         if cc is not None:
             store_mod.set_contact_status(
