@@ -30,6 +30,8 @@ from tools.transfer import TRANSFER_CALL_SPEC, transfer_call
 
 log = logging.getLogger("voice-runtime.tools")
 
+from tools.custom import build_custom_tools, create_dynamic_tool
+
 TOOL_REGISTRY: dict[str, Any] = {
     "check_availability": check_availability,
     "book_appointment": book_appointment,
@@ -47,8 +49,13 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
 }
 
 
-def build_tools(enabled: list[str] | None) -> list[Any]:
-    """Resolve enabled capability names to LiveKit function_tools."""
+def build_tools(
+    enabled: list[str] | None,
+    custom_tools: list[dict[str, Any]] | None = None,
+    tenant_id: str = "",
+    call_id: str = "",
+) -> list[Any]:
+    """Resolve enabled capability names and tenant custom tools to LiveKit function_tools."""
     tools: list[Any] = []
     for name in enabled or []:
         tool = TOOL_REGISTRY.get(name)
@@ -56,6 +63,11 @@ def build_tools(enabled: list[str] | None) -> list[Any]:
             log.warning("[tools] unknown enabled tool %r — skipping", name)
             continue
         tools.append(tool)
+
+    if custom_tools and tenant_id:
+        custom_fn_tools = build_custom_tools(custom_tools, tenant_id=tenant_id, call_id=call_id)
+        tools.extend(custom_fn_tools)
+
     return tools
 
 

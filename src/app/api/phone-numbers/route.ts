@@ -24,22 +24,40 @@ async function provisionLivekitInboundTrunk(input: {
       process.env.LIVEKIT_API_KEY || "",
       process.env.LIVEKIT_API_SECRET || ""
     ) as {
-      createSipInboundTrunk?: (req: unknown) => Promise<{ sipTrunkId?: string; trunkId?: string }>;
+      createSipInboundTrunk?: (name: string, numbers: string[], opts?: unknown) => Promise<{ sipTrunkId?: string; trunkId?: string }>;
+      createSipDispatchRule?: (rule: unknown, opts?: unknown) => Promise<unknown>;
     };
     if (typeof client.createSipInboundTrunk !== "function") return "";
-    const res = await client.createSipInboundTrunk({
-      name: `sigulon-${input.orgId}-${input.phoneNumber}`,
-      numbers: [input.phoneNumber],
-      metadata: buildDispatchMetadata({
-        orgId: input.orgId,
-        agentId: input.agentId || "",
-        direction: "inbound",
-      }),
-      // Dispatch rule fires the voice worker for every inbound SIP participant.
-      dispatchRules: [{ dispatchRuleIndividual: { roomPrefix: "sigulon-call-" } }],
-      agentName: LIVEKIT_AGENT_NAME,
+    const metaStr = buildDispatchMetadata({
+      orgId: input.orgId,
+      agentId: input.agentId || "",
+      phoneNumber: input.phoneNumber,
+      direction: "inbound",
     });
-    return String(res?.sipTrunkId || res?.trunkId || "");
+    const res = await client.createSipInboundTrunk(
+      `sigulon-${input.orgId}-${input.phoneNumber}`,
+      [input.phoneNumber],
+      { metadata: metaStr }
+    );
+    const trunkId = String(res?.sipTrunkId || res?.trunkId || "");
+    if (trunkId && typeof client.createSipDispatchRule === "function") {
+      try {
+        await client.createSipDispatchRule(
+          {
+            type: "individual",
+            roomPrefix: "sigulon-call-",
+          },
+          {
+            trunkIds: [trunkId],
+            name: `rule-${input.phoneNumber}`,
+            metadata: metaStr,
+          }
+        );
+      } catch (ruleErr) {
+        console.warn("[phone-numbers] LiveKit dispatch rule creation warning:", ruleErr);
+      }
+    }
+    return trunkId;
   } catch (err) {
     console.warn("[phone-numbers] LiveKit trunk provisioning skipped:", err);
     return "";

@@ -11,7 +11,6 @@
     "start": "next start",
     "lint": "eslint .",
     "lint:py": "echo 'TODO: add ruff/mypy for voice-runtime and services/campaign-worker' && exit 0",
-    "test:unit": "vitest run",
     "db:init": "vite-node scripts/create-tables.ts",
     "db:seed": "vite-node scripts/seed-mongodb.ts",
     "db:migrate:voice-stack": "vite-node scripts/migrate-to-consolidated-voice-stack.ts",
@@ -48,7 +47,6 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "tailwindcss": "^4",
-    "typescript": "^5",
-    "vitest": "^3.2.7"
+    "typescript": "^5"
   }
 }

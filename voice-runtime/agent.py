@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import time
 
@@ -53,6 +54,7 @@ from postcall import (
     summarize_call,
     transcript_from_events,
 )
+from subagents import SubAgentRegistry, create_handoff_tool
 from tools import build_tools
 from voice_stack import (
     TTS_MODEL,
@@ -75,6 +77,22 @@ MAX_RESPONSE_SENTENCES_SUFFIX = (
 
 def _instructions_for(config: AgentConfig) -> str:
     base = (config.system_prompt or "").strip() or "You are a helpful AI voice assistant."
+
+    # Runtime Prompt Injection (campaign scripts, appointment reminders, dynamic instructions)
+    if config.prompt_injection and config.prompt_injection.strip():
+        base = f"{base}\n\nSPECIAL RUNTIME CONTEXT & INSTRUCTIONS:\n{config.prompt_injection.strip()}"
+
+    # Customer Context Injection
+    if config.customer_context and isinstance(config.customer_context, dict):
+        ctx_lines = [f"- {k}: {v}" for k, v in config.customer_context.items() if v]
+        if ctx_lines:
+            base = f"{base}\n\nCALLER/CUSTOMER CONTEXT:\n" + "\n".join(ctx_lines)
+
+        # Substitute variable placeholders (e.g. {{customer_name}}, {{lead_name}}, {{phone}})
+        for k, v in config.customer_context.items():
+            if v is not None:
+                base = re.sub(rf"\{{\{{?\s*{re.escape(str(k))}\s*\}}?\}}", str(v).strip(), base, flags=re.IGNORECASE)
+
     hint = language_prompt_hint(config.language)
     return f"{base}\n\n{hint}{MAX_RESPONSE_SENTENCES_SUFFIX}"
 
@@ -167,7 +185,37 @@ async def _run_session(ctx, config: AgentConfig, metadata: dict) -> None:
     else:
         initial_instructions = _instructions_for(config)
 
-    tools = build_tools(config.enabled_tools)
+    # Build standard capabilities and custom tenant webhooks
+    tools = build_tools(
+        config.enabled_tools,
+        custom_tools=config.custom_tools,
+        tenant_id=config.tenant_id,
+        call_id=call_id,
+    )
+
+    # Subagents & dynamic handoff orchestration
+    subagent_registry = SubAgentRegistry(
+        tenant_id=config.tenant_id,
+        call_id=call_id,
+        language=config.language,
+        main_voice_id=config.voice_id,
+        main_voice_speed=config.voice_speed,
+    )
+    subagent_registry.load_from_config(config.subagents)
+
+    handoff_tool = create_handoff_tool(
+        subagent_registry,
+        tool_resolver=lambda e, c: build_tools(
+            e,
+            custom_tools=c or config.custom_tools,
+            tenant_id=config.tenant_id,
+            call_id=call_id,
+        ),
+        transcript_events=transcript_events,
+    )
+    if handoff_tool:
+        tools.append(handoff_tool)
+
     agent = Agent(instructions=initial_instructions, tools=tools)
 
     def _collect(role: str):
@@ -225,6 +273,9 @@ async def _run_session(ctx, config: AgentConfig, metadata: dict) -> None:
         "agent_id": config.agent_id,
         "room_name": room_name,
         "orgId": config.tenant_id,
+        "campaign_id": config.campaign_id or "",
+        "workflow_id": config.workflow_id or "",
+        "customer_context": config.customer_context or {},
     }
     try:
         session.userdata = userdata  # type: ignore[attr-defined]
@@ -342,6 +393,17 @@ def create_server():
             parsed = parse_job_metadata(raw_metadata)
         except Exception:  # noqa: BLE001
             parsed = {}
+
+        # Security requirement: Validate all metadata before session initialization.
+        # Strict tenant isolation at the application layer. Never leak prompts, tools, or data.
+        tenant_id = parsed.get("orgId") or parsed.get("tenant_id")
+        agent_id = parsed.get("agentId")
+        if not tenant_id or not agent_id:
+            log.error(
+                "[voice] security validation rejected: missing tenant_id or agent_id for room=%s",
+                room_name,
+            )
+            return
         # Room name maps 1:1 to session key; callId defaults to room.
         call_id = parsed.get("callId") or room_name
         metadata_for_job = raw_metadata or json.dumps({

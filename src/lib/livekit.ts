@@ -17,17 +17,33 @@ export const LIVEKIT_AGENT_NAME =
 
 export interface DispatchMetadata {
   orgId: string;
+  tenantId?: string;
   agentId: string;
   callId?: string;
+  phoneNumber?: string;
+  campaignId?: string;
+  workflowId?: string;
+  customerContext?: Record<string, unknown>;
+  promptInjection?: string;
+  voiceId?: string;
   direction?: "inbound" | "outbound";
   room?: string;
 }
 
 export function buildDispatchMetadata(meta: DispatchMetadata): string {
+  const tenantId = meta.tenantId || meta.orgId;
   return JSON.stringify({
-    orgId: meta.orgId,
+    orgId: tenantId,
+    tenant_id: tenantId,
     agentId: meta.agentId,
-    ...(meta.callId ? { callId: meta.callId } : {}),
+    agent_id: meta.agentId,
+    ...(meta.callId ? { callId: meta.callId, call_id: meta.callId } : {}),
+    ...(meta.phoneNumber ? { phoneNumber: meta.phoneNumber, phone_number: meta.phoneNumber } : {}),
+    ...(meta.campaignId ? { campaignId: meta.campaignId, campaign_id: meta.campaignId } : {}),
+    ...(meta.workflowId ? { workflowId: meta.workflowId, workflow_id: meta.workflowId } : {}),
+    ...(meta.customerContext ? { customerContext: meta.customerContext, customer_context: meta.customerContext } : {}),
+    ...(meta.promptInjection ? { promptInjection: meta.promptInjection, prompt_injection: meta.promptInjection } : {}),
+    ...(meta.voiceId ? { voiceId: meta.voiceId, voice_id: meta.voiceId } : {}),
     direction: meta.direction || "inbound",
     ...(meta.room ? { room: meta.room } : {}),
   });
@@ -37,13 +53,20 @@ export function parseDispatchMetadata(raw: string | null | undefined): DispatchM
   if (!raw) return null;
   try {
     const data = JSON.parse(raw) as Record<string, unknown>;
-    const orgId = String(data.orgId || data.org_id || "");
-    const agentId = String(data.agentId || data.agent_id || "");
+    const orgId = String(data.tenant_id || data.tenantId || data.orgId || data.org_id || "");
+    const agentId = String(data.agent_id || data.agentId || "");
     if (!orgId || !agentId) return null;
     return {
       orgId,
+      tenantId: orgId,
       agentId,
-      callId: data.callId ? String(data.callId) : undefined,
+      callId: data.callId ? String(data.callId) : data.call_id ? String(data.call_id) : undefined,
+      phoneNumber: data.phoneNumber ? String(data.phoneNumber) : data.phone_number ? String(data.phone_number) : undefined,
+      campaignId: data.campaignId ? String(data.campaignId) : data.campaign_id ? String(data.campaign_id) : undefined,
+      workflowId: data.workflowId ? String(data.workflowId) : data.workflow_id ? String(data.workflow_id) : undefined,
+      customerContext: (data.customerContext || data.customer_context) as Record<string, unknown> | undefined,
+      promptInjection: data.promptInjection ? String(data.promptInjection) : data.prompt_injection ? String(data.prompt_injection) : undefined,
+      voiceId: data.voiceId ? String(data.voiceId) : data.voice_id ? String(data.voice_id) : undefined,
       direction: data.direction === "outbound" ? "outbound" : "inbound",
       room: data.room ? String(data.room) : undefined,
     };

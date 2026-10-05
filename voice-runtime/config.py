@@ -323,6 +323,12 @@ class AgentConfig(BaseModel):
     )
     record_calls: bool = Field(default=True)
     bundle: Optional[dict[str, Any]] = Field(default=None, description="Standardized Agent Bundle v2")
+    campaign_id: Optional[str] = Field(default=None, description="Outbound campaign ID if part of campaign")
+    workflow_id: Optional[str] = Field(default=None, description="Routing workflow ID if part of workflow")
+    customer_context: dict[str, Any] = Field(default_factory=dict, description="Customer/lead context for prompt injection")
+    prompt_injection: Optional[str] = Field(default=None, description="Dynamic runtime prompt override / injection")
+    custom_tools: list[dict[str, Any]] = Field(default_factory=list, description="Tenant-configured custom webhook tools")
+    subagents: list[dict[str, Any]] = Field(default_factory=list, description="Tenant-configured specialist subagents")
     on_no_balance: str = Field(
         default="message",
         description='Zero-balance behavior: "message" | "forward_number".',
@@ -706,15 +712,28 @@ def parse_job_metadata(raw: str | dict[str, Any] | None) -> dict[str, Any]:
         if not isinstance(data, dict):
             return {}
     # Normalize common key variants.
-    org_id = data.get("orgId") or data.get("org_id") or data.get("organization_id") or ""
-    agent_id = data.get("agentId") or data.get("agent_id") or ""
-    call_id = data.get("callId") or data.get("call_id") or data.get("call") or ""
+    org_id = data.get("tenant_id") or data.get("tenantId") or data.get("orgId") or data.get("org_id") or data.get("organization_id") or ""
+    agent_id = data.get("agent_id") or data.get("agentId") or ""
+    call_id = data.get("call_id") or data.get("callId") or data.get("call") or ""
+    phone_number = data.get("phone_number") or data.get("phoneNumber") or data.get("from_number") or ""
+    campaign_id = data.get("campaign_id") or data.get("campaignId") or ""
+    workflow_id = data.get("workflow_id") or data.get("workflowId") or ""
+    customer_context = data.get("customer_context") or data.get("customerContext") or {}
+    prompt_injection = data.get("prompt_injection") or data.get("promptInjection") or ""
+    voice_id = data.get("voice_id") or data.get("voiceId") or ""
     direction = data.get("direction") or "inbound"
     room = data.get("room") or data.get("room_name") or call_id
     return {
         "orgId": str(org_id or ""),
+        "tenant_id": str(org_id or ""),
         "agentId": str(agent_id or ""),
         "callId": str(call_id or ""),
+        "phoneNumber": str(phone_number or ""),
+        "campaignId": str(campaign_id or ""),
+        "workflowId": str(workflow_id or ""),
+        "customerContext": customer_context if isinstance(customer_context, dict) else {},
+        "promptInjection": str(prompt_injection or ""),
+        "voiceId": str(voice_id or ""),
         "direction": str(direction or "inbound"),
         "room": str(room or ""),
         "raw": data,
@@ -727,7 +746,12 @@ def session_key_for_room(room_name: str) -> str:
 
 
 async def load_agent_config_by_org_agent(
-    org_id: str, agent_id: str, *, room_name: str = "", direction: str = "inbound"
+    org_id: str,
+    agent_id: str,
+    *,
+    room_name: str = "",
+    direction: str = "inbound",
+    metadata_dict: Optional[dict[str, Any]] = None,
 ) -> AgentConfig:
     """Load config directly from the agent row (pre-Call-doc, dispatch path)."""
     import asyncio
@@ -760,20 +784,39 @@ async def load_agent_config_by_org_agent(
         org_doc = find_by_id(client.organizations, org_id) or {}
         call_id = room_name or f"dispatch-{agent_id}"
         resolved_language = identity.get("language") or voice.get("language") or "hi-IN"
+
+        meta = metadata_dict or {}
+        customer_ctx = meta.get("customerContext") or {}
+        lead_name = (
+            customer_ctx.get("name")
+            or customer_ctx.get("customer_name")
+            or customer_ctx.get("lead_name")
+            or None
+        )
         raw_intro = instructions.get("greeting") or instructions.get("introduction") or None
-        intro = resolve_introduction(raw_intro, lead_name=None, language=resolved_language)
+        intro = resolve_introduction(raw_intro, lead_name=lead_name, language=resolved_language)
         greeting_first = direction != "outbound"
+
+        # Runtime voice selection override if specified
+        resolved_voice_id = meta.get("voiceId") or voice.get("voiceId") or voice.get("voice_id") or ""
+
+        # Tenant-configured custom tools and subagents
+        custom_tools = list(tools.get("customTools") or tools.get("custom_tools") or [])
+        subagents = list(agent_doc.get("subagents") or cfg.get("subagents") or [])
+
         return AgentConfig(
             call_id=call_id,
             agent_id=str(agent_doc["_id"]),
             tenant_id=str(org_id),
             direction=direction if direction in ("inbound", "outbound") else "inbound",
             room_name=room_name or call_id,
+            from_number=meta.get("phoneNumber"),
+            to_number=meta.get("phoneNumber"),
             system_prompt=instructions.get("systemPrompt") or instructions.get("system_prompt") or DEFAULT_SYSTEM_PROMPT,
             introduction=intro,
             greeting_first=greeting_first,
             language=resolved_language,
-            voice_id=voice.get("voiceId") or voice.get("voice_id") or "",
+            voice_id=resolved_voice_id,
             voice_speed=float(voice.get("speed", 1.0)),
             llm_provider=SUPPORTED_LLM_PROVIDER,
             llm_model=LLM_MODEL,
@@ -782,6 +825,12 @@ async def load_agent_config_by_org_agent(
             tts_provider=SUPPORTED_TTS_PROVIDER,
             tts_model=TTS_MODEL,
             enabled_tools=list(tools.get("enabledTools", tools.get("enabled_tools", []))),
+            custom_tools=custom_tools,
+            subagents=subagents,
+            campaign_id=meta.get("campaignId") or None,
+            workflow_id=meta.get("workflowId") or None,
+            customer_context=customer_ctx,
+            prompt_injection=meta.get("promptInjection") or None,
             max_concurrent_calls=int(org_doc.get("maxConcurrentCalls", 5)),
             max_call_seconds=int(settings.get("maxCallDuration", 1800)),
             silence_timeout_seconds=int(settings.get("silenceTimeout", 20)),
@@ -815,6 +864,16 @@ async def load_agent_config_for_job(
             cfg = await load_agent_config(call_id)
             if room and not cfg.room_name:
                 cfg.room_name = room
+            if parsed.get("promptInjection"):
+                cfg.prompt_injection = parsed["promptInjection"]
+            if parsed.get("customerContext"):
+                cfg.customer_context = parsed["customerContext"]
+            if parsed.get("voiceId"):
+                cfg.voice_id = parsed["voiceId"]
+            if parsed.get("campaignId"):
+                cfg.campaign_id = parsed["campaignId"]
+            if parsed.get("workflowId"):
+                cfg.workflow_id = parsed["workflowId"]
             try:
                 await get_redis().set(
                     session_key_for_room(room or call_id),
@@ -827,7 +886,7 @@ async def load_agent_config_for_job(
         except ConfigNotFoundError:
             pass
     cfg = await load_agent_config_by_org_agent(
-        org_id, agent_id, room_name=room or call_id, direction=direction
+        org_id, agent_id, room_name=room or call_id, direction=direction, metadata_dict=parsed
     )
     if call_id and not cfg.call_id:
         cfg.call_id = call_id
