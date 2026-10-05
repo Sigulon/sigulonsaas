@@ -30,6 +30,9 @@ CALL_TERMINAL_MIRROR = {
     "busy": "busy",
     "no_answer": "no_answer",
 }
+# Live conversation states (lowercased, matching latest_call_for_contact).
+# The sweep must never fail these with the short dial-stale window.
+CALL_LIVE = ("answered", "in_progress")
 CALL_ACTIVE = ("dialing", "calling", "ringing")
 DISPATCH_BATCH_SIZE = 500
 
@@ -367,7 +370,7 @@ def sweep_campaign(ctx: WorkerContext, campaign_id: str, now: datetime) -> dict[
         ctx.database, campaign_id, CALL_ACTIVE, cutoff
     )
     for row in stale_active:
-        if _heal_stale_active(ctx, campaign_id, row):
+        if _heal_stale_active(ctx, campaign_id, row, now):
             stats["healed"] += 1
         else:
             stats["failed_stale"] += 1
@@ -438,27 +441,66 @@ def _dispatch_next_batch(ctx: WorkerContext, campaign_id: str) -> int:
         queueing_mod.release_dispatch_lock(ctx.redis, campaign_id, token)
 
 
-def _heal_stale_active(ctx: WorkerContext, campaign_id: str, row: dict) -> bool:
+def _live_cutoff(ctx: WorkerContext, now: datetime) -> datetime:
+    """Conservative cutoff for answered calls: max_call + grace, never short."""
+    max_call = int(getattr(ctx.config, "max_call_seconds", 1800) or 1800)
+    grace = int(getattr(ctx.config, "answered_stale_grace_seconds", 300) or 300)
+    return now - timedelta(seconds=max_call + grace)
+
+
+def _row_time(row: dict) -> Optional[datetime]:
+    """Contact's last attempt as aware datetime, or None when unknown."""
+    raw = row.get("last_attempt_at")
+    if not raw:
+        return None
+    try:
+        text = str(raw).strip().replace("Z", "+00:00")
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _heal_stale_active(
+    ctx: WorkerContext, campaign_id: str, row: dict, now: Optional[datetime] = None
+) -> bool:
     """Reconcile a contact stuck mid-call: mirror a terminal call, else fail.
 
-    Returns True when the contact left the active set (healed or failed).
+    Returns True when the contact left the active set (healed, mirrored, or
+    live-skipped) and False only when it was terminalized as failed.
+    Live calls (answered/in_progress) are never failed inside their
+    max_call_seconds + grace window. Sweep failures tag the call row with
+    ``metadata.fail_reason=stale_sweep`` so room_finished can recover them.
     Webhook misses heal forward; truly dead dials terminalize. Either way
     the contact converges — the sweep never leaves it behind.
     """
+    now = now or datetime.now(timezone.utc)
     contact_id = row["contact_id"]
     previous = row.get("call_status")
     latest = store_mod.latest_call_for_contact(ctx.database, campaign_id, contact_id)
-    if latest and latest.get("status") in CALL_TERMINAL_MIRROR:
+    if latest and str(latest.get("status") or "").lower() in CALL_TERMINAL_MIRROR:
         store_mod.set_contact_status(
             ctx.database, campaign_id, contact_id,
-            CALL_TERMINAL_MIRROR[latest["status"]],
+            CALL_TERMINAL_MIRROR[str(latest["status"]).lower()],
         )
         return True
-    if latest and latest.get("status") not in ("completed", "failed", "busy",
+    if latest and str(latest.get("status") or "").lower() in CALL_LIVE:
+        # Conservative live guard: only heal answered calls past
+        # max_call_seconds + grace. Within the window, leave them alone —
+        # the room_finished webhook owns the terminal transition.
+        row_dt = _row_time(row)
+        if row_dt is None or row_dt > _live_cutoff(ctx, now):
+            log.info("contact %s live (%s) — skipping sweep heal",
+                     contact_id, latest.get("status"))
+            return True
+        # Past the live ceiling: fall through to fail as a stuck call.
+    if latest and str(latest.get("status") or "").lower() not in ("completed", "failed", "busy",
                                                "no_answer", "cancelled", "voicemail"):
-        store_mod.update_call(ctx.database, latest["id"], {"status": "failed"})
+        store_mod.fail_call_as_stale(ctx.database, latest["id"])
     store_mod.set_contact_status(ctx.database, campaign_id, contact_id, "failed")
-    log.warning("contact %s stale in %s — terminalized as failed",
+    log.warning("contact %s stale in %s — terminalized as failed (stale_sweep)",
                 contact_id, previous)
     return False
 

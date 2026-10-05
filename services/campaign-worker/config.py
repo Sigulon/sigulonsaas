@@ -32,6 +32,11 @@ class WorkerConfig:
     stale_after_seconds: int = 900  # 15 min without progress → heal/requeue
     max_call_attempts: int = 3
     retry_base_seconds: int = 300  # backoff = base * 2^failures
+    # Conservative ceiling for answered/in-progress calls: the sweep must
+    # never apply the short dial-stale window to a live conversation.
+    # Answered contacts are only healed after max_call_seconds + grace.
+    max_call_seconds: int = 1800
+    answered_stale_grace_seconds: int = 300
 
     global_max_concurrent: int = 50
     campaign_max_concurrent: int = 5
@@ -82,6 +87,8 @@ def load_config() -> WorkerConfig:
         stale_after_seconds=_int("WORKER_STALE_AFTER_SECONDS", 900),
         max_call_attempts=_int("WORKER_MAX_CALL_ATTEMPTS", 3),
         retry_base_seconds=_int("WORKER_RETRY_BASE_SECONDS", 300),
+        max_call_seconds=_int("WORKER_MAX_CALL_SECONDS", 1800),
+        answered_stale_grace_seconds=_int("WORKER_ANSWERED_GRACE_SECONDS", 300),
         global_max_concurrent=_int("WORKER_GLOBAL_MAX_CONCURRENT", 50),
         campaign_max_concurrent=_int("WORKER_CAMPAIGN_MAX_CONCURRENT", 5),
         number_max_concurrent=_int("WORKER_NUMBER_MAX_CONCURRENT", 2),
