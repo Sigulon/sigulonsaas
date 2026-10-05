@@ -261,8 +261,8 @@ export async function POST(req: NextRequest) {
             {
               $set: {
                 organizationId: call.organizationId,
-                storageProvider: "gcs",
-                bucket: process.env.GCS_RECORDINGS_BUCKET || "",
+                storageProvider: "r2",
+                bucket: process.env.R2_BUCKET_NAME || "sigulon-storage",
                 objectKey: String(file?.filename || recordingUrl),
                 status: "ready",
               },
