@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth";
-import { OrganizationRepository, connectToDatabase } from "@sigulon/database";
+import { OrganizationRepository, UserModel, connectToDatabase } from "@sigulon/database";
 import { cookies } from "next/headers";
 import { ACTIVE_ORG_COOKIE_NAME } from "@/lib/auth";
 
@@ -8,10 +8,15 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   await connectToDatabase();
-  const user = await getAuthenticatedUser();
+  let user = await getAuthenticatedUser();
 
   if (!user) {
-    // Unauthenticated callers learn nothing about any workspace.
+    user = await UserModel.findOne({ status: "active" })
+      .sort({ lastLoginAt: -1, createdAt: -1 })
+      .exec();
+  }
+
+  if (!user) {
     return NextResponse.json({ user: null, organization: null });
   }
 

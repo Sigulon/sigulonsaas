@@ -111,6 +111,7 @@ export function Header() {
             <select
               id="operation-direction"
               value={direction}
+              suppressHydrationWarning
               onChange={(event) => updateFilter("direction", event.target.value)}
               className="h-8 rounded-md border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-700 outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
             >
@@ -123,6 +124,7 @@ export function Header() {
             <select
               id="operation-period"
               value={period}
+              suppressHydrationWarning
               onChange={(event) => updateFilter("period", event.target.value)}
               className="h-8 rounded-md border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-700 outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
             >
@@ -140,6 +142,7 @@ export function Header() {
             {session.memberships.length > 1 ? (
               <select
                 value={session.organization.id}
+                suppressHydrationWarning
                 onChange={(e) => handleSwitchOrg(e.target.value)}
                 className="bg-transparent font-medium text-gray-800 outline-none cursor-pointer"
                 title="Switch Organization"
@@ -171,6 +174,7 @@ export function Header() {
             <button
               onClick={handleLogout}
               disabled={isLoggingOut}
+              suppressHydrationWarning
               className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-red-600 transition-colors"
               title="Sign out"
             >

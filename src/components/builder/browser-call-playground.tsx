@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,35 @@ import {
   ExternalLink,
 } from "lucide-react";
 
+export const SUPPORTED_STT_LANGUAGES = [
+  { code: "te-IN", label: "Telugu (తెలుగు)" },
+  { code: "hi-IN", label: "Hindi (हिन्दी)" },
+  { code: "en-IN", label: "English (India)" },
+  { code: "ta-IN", label: "Tamil (தமிழ்)" },
+  { code: "kn-IN", label: "Kannada (ಕನ್ನಡ)" },
+  { code: "mr-IN", label: "Marathi (मराठी)" },
+  { code: "bn-IN", label: "Bengali (বাংলা)" },
+  { code: "gu-IN", label: "Gujarati (ગુજરાતી)" },
+  { code: "ml-IN", label: "Malayalam (മലയാളം)" },
+  { code: "pa-IN", label: "Punjabi (ਪੰਜਾਬੀ)" },
+  { code: "en-US", label: "English (US)" },
+] as const;
+
+export function resolveSpeechLanguageCode(lang?: string): string {
+  const clean = (lang || "").toLowerCase().trim();
+  if (clean.startsWith("te") || clean.includes("telugu")) return "te-IN";
+  if (clean.startsWith("hi") || clean.includes("hindi") || clean.startsWith("hing")) return "hi-IN";
+  if (clean.startsWith("ta") || clean.includes("tamil")) return "ta-IN";
+  if (clean.startsWith("kn") || clean.includes("kannada")) return "kn-IN";
+  if (clean.startsWith("mr") || clean.includes("marathi")) return "mr-IN";
+  if (clean.startsWith("bn") || clean.includes("bengali")) return "bn-IN";
+  if (clean.startsWith("gu") || clean.includes("gujarati")) return "gu-IN";
+  if (clean.startsWith("ml") || clean.includes("malayalam")) return "ml-IN";
+  if (clean.startsWith("pa") || clean.includes("punjabi")) return "pa-IN";
+  if (clean.startsWith("en-us") || clean === "us") return "en-US";
+  return "en-IN";
+}
+
 interface BrowserCallPlaygroundProps {
   agentId: string;
   agentName: string;
@@ -35,8 +64,6 @@ interface Message {
   time: string;
 }
 
-
-
 export function BrowserCallPlayground({
   agentId,
   agentName,
@@ -45,6 +72,10 @@ export function BrowserCallPlayground({
   systemPrompt,
   voiceId,
 }: BrowserCallPlaygroundProps) {
+  const [selectedLanguage, setSelectedLanguage] = useState(() =>
+    resolveSpeechLanguageCode(language)
+  );
+  const [interimTranscript, setInterimTranscript] = useState("");
   const [isInCall, setIsInCall] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
@@ -65,9 +96,19 @@ export function BrowserCallPlayground({
   const audioChunksRef = useRef<Blob[]>([]);
   const micStreamRef = useRef<MediaStream | null>(null);
 
-  /** Minimal Web Speech API surface (full lib.dom types lag vendor APIs). */
+  /** Minimal Web Speech API surface */
+  interface SpeechRecognitionAlternative {
+    transcript?: string;
+    confidence?: number;
+  }
+  interface SpeechRecognitionResultItem {
+    isFinal?: boolean;
+    length: number;
+    [index: number]: SpeechRecognitionAlternative;
+  }
   interface SpeechRecognitionResultEvent {
-    results?: ArrayLike<ArrayLike<{ transcript?: string }>>;
+    results?: ArrayLike<SpeechRecognitionResultItem>;
+    resultIndex?: number;
     error?: string;
   }
   interface SpeechRecognitionInstance {
@@ -85,6 +126,49 @@ export function BrowserCallPlayground({
     webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
   }
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+
+  useEffect(() => {
+    setSelectedLanguage(resolveSpeechLanguageCode(language));
+  }, [language]);
+
+  const sampleQuestions = useMemo(() => {
+    if (selectedLanguage.startsWith("te")) {
+      return [
+        "గజం ధర ఎంత ఉంది అండి?",
+        "బ్యాంక్ లోన్ సదుపాయం ఉందా?",
+        "హైవే నుంచి ఎంత దూరం?",
+        "ఈ వీకెండ్ సైట్ విజిట్ రావచ్చా?",
+      ];
+    }
+    if (selectedLanguage.startsWith("hi")) {
+      return [
+        "प्लॉट की कीमत क्या है?",
+        "क्या बैंक लोन सुविधा उपलब्ध है?",
+        "हाईవే से कितनी दूरी पर है?",
+        "क्या हम साइट विजिट कर सकते हैं?",
+      ];
+    }
+    if (selectedLanguage.startsWith("ta")) {
+      return [
+        "சதுர கஜத்தின் விலை என்ன?",
+        "வங்கி கடன் வசதி உள்ளதா?",
+        "இடத்தை பார்க்க வரலாமா?",
+      ];
+    }
+    if (selectedLanguage.startsWith("kn")) {
+      return [
+        "ಪ್ಲಾಟ್ ಬೆಲೆ ಎಷ್ಟು?",
+        "ಬ್ಯಾಂಕ್ ಲೋನ್ ಸೌಲಭ್ಯವಿದೆಯೇ?",
+        "ಸೈಟ್ ವಿಸಿಟ್ ಯಾವಾಗ ಮಾಡಬಹುದು?",
+      ];
+    }
+    return [
+      "What is the price per square yard?",
+      "Is bank loan facility available?",
+      "How far is the project from highway?",
+      "Can we schedule a site visit this weekend?",
+    ];
+  }, [selectedLanguage]);
 
   // Stable refs to eliminate stale closure problems in event callbacks
   const isInCallRef = useRef(isInCall);
@@ -199,7 +283,7 @@ export function BrowserCallPlayground({
             history: updatedHistory.map((m) => ({ role: m.role, content: m.content })),
             action: "turn",
             voiceId,
-            language,
+            language: selectedLanguage,
             systemPrompt,
           }),
         });
@@ -230,7 +314,7 @@ export function BrowserCallPlayground({
         setIsProcessingTurn(false);
       }
     },
-    [agentId, language, playAudio, systemPrompt, voiceId]
+    [agentId, selectedLanguage, playAudio, systemPrompt, voiceId]
   );
 
   const handleSendMessageRef = useRef(handleSendMessage);
@@ -262,6 +346,7 @@ export function BrowserCallPlayground({
         recognitionRef.current.stop();
       } catch {}
       setIsListening(false);
+      setInterimTranscript("");
     }
   }, []);
 
@@ -274,45 +359,48 @@ export function BrowserCallPlayground({
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang =
-        language === "hi"
-          ? "hi-IN"
-          : language === "te"
-          ? "te-IN"
-          : language === "ta"
-          ? "ta-IN"
-          : language === "kn"
-          ? "kn-IN"
-          : language === "bn"
-          ? "bn-IN"
-          : language === "mr"
-          ? "mr-IN"
-          : language === "gu"
-          ? "gu-IN"
-          : language === "ml"
-          ? "ml-IN"
-          : language === "pa"
-          ? "pa-IN"
-          : "en-IN";
+      recognition.interimResults = true;
+      recognition.lang = selectedLanguage;
 
       recognition.onresult = (event: SpeechRecognitionResultEvent) => {
-        const transcript = event.results?.[0]?.[0]?.transcript;
-        if (transcript && transcript.trim()) {
-          setInputText(transcript);
-          // Directly submit speech without needing a button press!
-          handleSendMessageRef.current(transcript);
+        let finalTranscript = "";
+        let currentInterim = "";
+
+        const results = event.results;
+        if (results) {
+          for (let i = 0; i < (results.length || 0); i++) {
+            const item = results[i];
+            const transcript = item?.[0]?.transcript || "";
+            if (item?.isFinal) {
+              finalTranscript += transcript;
+            } else {
+              currentInterim += transcript;
+            }
+          }
         }
-        setIsListening(false);
+
+        if (currentInterim) {
+          setInterimTranscript(currentInterim);
+        }
+
+        if (finalTranscript && finalTranscript.trim()) {
+          setInterimTranscript("");
+          setInputText(finalTranscript.trim());
+          // Directly submit speech without needing a button press!
+          handleSendMessageRef.current(finalTranscript.trim());
+        }
       };
 
       recognition.onerror = (e: SpeechRecognitionResultEvent) => {
-        console.warn("Speech recognition notice:", e.error);
+        if (e.error !== "no-speech") {
+          console.warn("Speech recognition notice:", e.error);
+        }
         setIsListening(false);
       };
 
       recognition.onend = () => {
         setIsListening(false);
+        setInterimTranscript("");
         // If in call, hands-free mode is on, and agent is not speaking, automatically keep listening for caller
         if (
           handsFreeRef.current &&
@@ -338,7 +426,7 @@ export function BrowserCallPlayground({
 
       recognitionRef.current = recognition;
     }
-  }, [language]);
+  }, [selectedLanguage]);
 
   // Audio lifecycle: when agent finishes speaking, automatically resume microphone listening
   useEffect(() => {
@@ -429,7 +517,7 @@ export function BrowserCallPlayground({
         body: JSON.stringify({
           action: "init",
           voiceId,
-          language,
+          language: selectedLanguage,
           systemPrompt,
         }),
       });
@@ -558,7 +646,26 @@ export function BrowserCallPlayground({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Speech-to-Text Language Selection */}
+          <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs dark:border-slate-800 dark:bg-slate-900">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">STT:</span>
+            <select
+              value={selectedLanguage}
+              onChange={(e) => setSelectedLanguage(e.target.value)}
+              disabled={isInCall && isListening}
+              suppressHydrationWarning
+              className="bg-transparent text-xs font-semibold text-indigo-600 dark:text-indigo-400 outline-none cursor-pointer"
+              title="Speech Recognition Language"
+            >
+              {SUPPORTED_STT_LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code} className="text-slate-900 bg-white">
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="text-right">
             <span className="text-[11px] text-slate-400 block">Voice Persona</span>
             <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1">
@@ -688,14 +795,20 @@ export function BrowserCallPlayground({
               )}
 
               {isListening && (
-                <div className="text-center mt-2">
+                <div className="text-center mt-2 space-y-1.5">
                   <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5 justify-center">
                     <Radio className="h-4 w-4 animate-pulse text-emerald-400" />
-                    Microphone is Live — Speak freely, agent is listening!
+                    Listening in {SUPPORTED_STT_LANGUAGES.find((l) => l.code === selectedLanguage)?.label || selectedLanguage}
                   </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">
-                    No buttons needed. Just talk like on a real phone call.
-                  </span>
+                  {interimTranscript ? (
+                    <div className="inline-block px-3.5 py-1.5 rounded-full bg-emerald-950/80 border border-emerald-400/60 text-emerald-200 text-xs font-medium animate-pulse shadow-md max-w-md mx-auto truncate">
+                      &ldquo;{interimTranscript}&rdquo;
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 block">
+                      Microphone is live. Speak in {SUPPORTED_STT_LANGUAGES.find((l) => l.code === selectedLanguage)?.label?.split(" ")[0] || "Telugu"} naturally.
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -772,6 +885,26 @@ export function BrowserCallPlayground({
               />
               <span>Auto-Listen</span>
             </label>
+          </div>
+
+          {/* Quick Ask conversational chips */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
+              <Sparkles className="h-3 w-3 text-amber-500" />
+              Quick Ask:
+            </span>
+            {sampleQuestions.map((q, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleSendMessage(q)}
+                disabled={isProcessingTurn || isAgentSpeaking}
+                suppressHydrationWarning
+                className="rounded-full bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 border border-slate-200 px-2.5 py-1 text-[11px] text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 transition-colors disabled:opacity-40 cursor-pointer"
+              >
+                &ldquo;{q}&rdquo;
+              </button>
+            ))}
           </div>
 
 

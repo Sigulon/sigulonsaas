@@ -78,7 +78,10 @@ export async function getAuthenticatedUser(): Promise<IUser | null> {
     }
 
     return session.userId as unknown as IUser;
-  } catch (err) {
+  } catch (err: unknown) {
+    if ((err as { digest?: string })?.digest === "DYNAMIC_SERVER_USAGE") {
+      throw err;
+    }
     console.error("[auth] Error validating session:", err);
     return null;
   }

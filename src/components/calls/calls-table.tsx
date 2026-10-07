@@ -101,6 +101,7 @@ export function CallsTable({
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <select
               value={statusFilter}
+              suppressHydrationWarning
               onChange={(e) => setStatusFilter(e.target.value)}
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
             >
@@ -113,6 +114,7 @@ export function CallsTable({
 
             <select
               value={outcomeFilter}
+              suppressHydrationWarning
               onChange={(e) => setOutcomeFilter(e.target.value)}
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
             >

@@ -154,6 +154,7 @@ export function createLiveKitInferenceToken(
 export async function generateLiveKitChatCompletion(params: {
   messages: Array<{ role: string; content: string }>;
   systemPrompt?: string;
+  language?: string;
   model?: string;
   temperature?: number;
   maxTokens?: number;
@@ -161,6 +162,7 @@ export async function generateLiveKitChatCompletion(params: {
   const {
     messages,
     systemPrompt,
+    language,
     model = LIVEKIT_DEFAULT_LLM,
     temperature = 0.7,
     maxTokens = 150,
@@ -168,13 +170,50 @@ export async function generateLiveKitChatCompletion(params: {
 
   const token = createLiveKitInferenceToken();
 
-  const formattedMessages: Array<{ role: string; content: string }> = [];
-  if (systemPrompt) {
-    formattedMessages.push({
-      role: "system",
-      content: `${systemPrompt}\n\nKeep spoken voice replies natural, polite, and at most 2 short sentences. Do not use asterisks, markdown, emojis, or bullet points.`,
-    });
+  // Language & conversational behavior instructions
+  const cleanLang = (language || "").toLowerCase().trim();
+  let langGuidance = "";
+  if (cleanLang.startsWith("te") || cleanLang.includes("telugu")) {
+    langGuidance = `CRITICAL CONVERSATIONAL & LANGUAGE RULES:
+- You MUST respond strictly in natural, conversational Telugu (తెలుగు script).
+- PRIORITY: Always answer the caller's specific question or doubt directly and warmly FIRST using your knowledge base before moving to any script steps. Never ignore their questions or repeat the same script line.
+- If what the caller said is unclear, politely ask for clarification in Telugu (e.g. 'నమస్కారం అండి, దయచేసి మళ్ళీ చెప్పగలరా?').
+- Keep spoken voice replies concise (1 to 2 short sentences max) so it sounds like a real phone call.
+- NEVER output markdown, asterisks (*), hashtags, emojis, or bullet points. Output pure spoken dialogue only.`;
+  } else if (cleanLang.startsWith("hi") || cleanLang.includes("hindi")) {
+    langGuidance = `CRITICAL CONVERSATIONAL & LANGUAGE RULES:
+- You MUST respond strictly in natural, conversational Hindi (Devanagari script).
+- PRIORITY: Always answer the caller's specific question directly and politely FIRST before moving to any script steps.
+- Keep spoken voice replies concise (1 to 2 short sentences max).
+- NEVER output markdown, asterisks (*), hashtags, emojis, or bullet points.`;
+  } else if (cleanLang.startsWith("ta") || cleanLang.includes("tamil")) {
+    langGuidance = `CRITICAL CONVERSATIONAL & LANGUAGE RULES:
+- You MUST respond strictly in natural, conversational Tamil (தமிழ் script).
+- PRIORITY: Always answer the caller's specific question directly and politely FIRST before moving to any script steps.
+- Keep spoken voice replies concise (1 to 2 short sentences max).
+- NEVER output markdown, asterisks (*), hashtags, emojis, or bullet points.`;
+  } else if (cleanLang.startsWith("kn") || cleanLang.includes("kannada")) {
+    langGuidance = `CRITICAL CONVERSATIONAL & LANGUAGE RULES:
+- You MUST respond strictly in natural, conversational Kannada (ಕನ್ನಡ script).
+- PRIORITY: Always answer the caller's specific question directly and politely FIRST before moving to any script steps.
+- Keep spoken voice replies concise (1 to 2 short sentences max).
+- NEVER output markdown, asterisks (*), hashtags, emojis, or bullet points.`;
+  } else {
+    langGuidance = `CRITICAL CONVERSATIONAL RULES:
+- PRIORITY: Always answer the caller's specific question or statement directly and politely FIRST before moving to any script steps.
+- Keep spoken voice replies concise (1 to 2 short sentences max) suitable for phone conversation.
+- NEVER output markdown, asterisks (*), hashtags, emojis, or bullet points.`;
   }
+
+  const formattedMessages: Array<{ role: string; content: string }> = [];
+  const fullSystemPrompt = systemPrompt
+    ? `${systemPrompt}\n\n${langGuidance}`
+    : langGuidance;
+
+  formattedMessages.push({
+    role: "system",
+    content: fullSystemPrompt,
+  });
 
   for (const m of messages) {
     if (m.role && m.content) {
@@ -208,7 +247,13 @@ export async function generateLiveKitChatCompletion(params: {
     choices?: Array<{ message?: { content?: string } }>;
   };
 
-  const reply = data.choices?.[0]?.message?.content?.trim() || "";
+  let reply = data.choices?.[0]?.message?.content?.trim() || "";
+  // Strip any accidental markdown formatting or emojis from TTS audio
+  reply = reply
+    .replace(/[*_#`~[\]]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
   return reply;
 }
 

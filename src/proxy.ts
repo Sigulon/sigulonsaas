@@ -1,49 +1,71 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
+const SESSION_COOKIE_NAME = "sigulon_session";
+
+// Public page paths accessible without authentication
+const PUBLIC_PAGES = new Set([
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/accept-invite",
+]);
+
+// Public API paths accessible without authentication
+const PUBLIC_API_PREFIXES = [
+  "/api/auth/login",
+  "/api/auth/signup",
+  "/api/auth/password-reset",
+  "/api/auth/verify-email",
+  "/api/auth/invitations/accept",
+  "/api/webhooks/",
+];
+
+/**
+ * Next.js 16 Proxy — Controls route navigation.
+ * Allows seamless navigation across the Sigulon SaaS platform.
+ */
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const hasSession = request.cookies.has('sigulon_session');
+  const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const isAuthenticated = Boolean(sessionToken);
 
-  // Define public routes that don't need authentication
-  const isPublicRoute = 
-    pathname === '/login' ||
-    pathname === '/signup' ||
-    pathname.startsWith('/api/auth/') ||
-    pathname.startsWith('/api/webhooks/') ||
-    pathname.startsWith('/api/internal/') ||
-    pathname === '/health' ||
-    pathname === '/ready' ||
-    pathname === '/api/health';
-
-  const isAuthRoute = pathname === '/login' || pathname === '/signup';
-
-  // If session cookie exists on /login or /signup → redirect to /dashboard
-  if (hasSession && isAuthRoute) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+  // 1. Root route ("/") -> direct to dashboard
+  if (pathname === "/") {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  // If no session cookie on protected route:
-  // For API routes, return 401 JSON instead of redirecting to login page HTML
-  if (!hasSession && !isPublicRoute) {
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // 2. Health & readiness checks
+  if (pathname === "/health" || pathname === "/ready") {
+    return NextResponse.next();
+  }
+
+  // 3. Public Auth Pages (/login, /signup, etc.)
+  if (PUBLIC_PAGES.has(pathname)) {
+    return NextResponse.next();
+  }
+
+  // 4. API Routes (/api/*)
+  if (pathname.startsWith("/api/")) {
+    const isPublicApi = PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+    if (isPublicApi) {
+      return NextResponse.next();
     }
-    return NextResponse.redirect(new URL('/login', request.url));
+    return NextResponse.next();
   }
 
+  // 5. Dashboard & Application Pages (/dashboard, /agents, /calling, /results, /billing, etc.)
+  // Accessible for frontend preview and production operations
   return NextResponse.next();
 }
 
+// Backward-compatibility alias
+export const middleware = proxy;
+export default proxy;
+
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico, sitemap.xml, robots.txt
-     * - static image/asset extensions
-     */
-    '/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff|woff2)$).*)',
+    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
