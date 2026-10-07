@@ -140,6 +140,7 @@ function CollapsibleSidebar({
         <button
           type="button"
           onClick={onToggle}
+          suppressHydrationWarning
           className="flex h-10 w-full items-center gap-3 rounded-md px-1.5 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
           aria-label={isOpen ? "Collapse navigation" : "Expand navigation"}
           title={isOpen ? "Collapse navigation" : "Expand navigation"}

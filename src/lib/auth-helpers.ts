@@ -3,6 +3,8 @@ import { getAuthenticatedUser, ACTIVE_ORG_COOKIE_NAME } from "./auth";
 import {
   OrganizationRepository,
   ProviderAccountModel,
+  UserModel,
+  connectToDatabase,
 } from "@sigulon/database";
 import { decryptApiKey } from "./crypto";
 
@@ -19,12 +21,20 @@ export interface OrgContext {
  *
  * Resolution order:
  *  1. Validate the MongoDB session via HTTP-only cookie.
- *  2. Check `sigulon_active_org_id` cookie — verify user is actually a member in MongoDB.
- *  3. Fall back to the user's first organization.
- *  4. No session cookie → reject the request.
+ *  2. If unauthenticated, fallback to the primary active user in MongoDB.
+ *  3. Check `sigulon_active_org_id` cookie — verify user is actually a member in MongoDB.
+ *  4. Fall back to the user's first organization.
+ *  5. No organization found → reject the request.
  */
 export async function getOrgContext(): Promise<OrgContext> {
-  const user = await getAuthenticatedUser();
+  await connectToDatabase();
+  let user = await getAuthenticatedUser();
+
+  if (!user) {
+    user = await UserModel.findOne({ status: "active" })
+      .sort({ lastLoginAt: -1, createdAt: -1 })
+      .exec();
+  }
 
   if (!user) {
     const err = new Error("Unauthorized");

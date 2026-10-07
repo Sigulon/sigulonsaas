@@ -1,20 +1,25 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Inter } from "next/font/google";
+import { Inter, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 
 const interSans = Inter({
-  variable: "--font-inter-sans",
+  variable: "--font-sans",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono",
+  subsets: ["latin"],
+});
+
+const sourceSerif = Source_Serif_4({
+  variable: "--font-serif",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "Sigulon",
-  description: "Sigulon AI voice-agent workspace — agents, campaigns, calls, and billing.",
+  title: "SIGULON — AI Voice Calling Agents Platform",
+  description: "Enterprise AI voice calling agents platform for SMBs. Create agents, launch instant lead calls, bulk campaigns, and manage inbound voice operations.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -22,7 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${interSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${interSans.variable} ${jetbrainsMono.variable} ${sourceSerif.variable} h-full antialiased`}
     >
       <head>
         <script
@@ -33,9 +38,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   if (!node || node.nodeType !== 1) return;
                   if (node.hasAttribute('bis_skin_checked')) node.removeAttribute('bis_skin_checked');
                   if (node.hasAttribute('bis_register')) node.removeAttribute('bis_register');
+                  if (node.hasAttribute('fdprocessedid')) node.removeAttribute('fdprocessedid');
                   for (var i = node.attributes.length - 1; i >= 0; i--) {
                     var name = node.attributes[i].name;
-                    if (name.indexOf('__processed_') === 0) {
+                    if (
+                      name.indexOf('__processed_') === 0 ||
+                      name.indexOf('data-dashlane') === 0 ||
+                      name.indexOf('data-lp') === 0 ||
+                      name.indexOf('data-lastpass') === 0 ||
+                      name.indexOf('data-1p') === 0 ||
+                      name === 'fdprocessedid'
+                    ) {
                       node.removeAttribute(name);
                     }
                   }
@@ -43,7 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 function cleanTree(root) {
                   if (!root) return;
                   cleanNode(root);
-                  var els = root.querySelectorAll ? root.querySelectorAll('[bis_skin_checked],[bis_register]') : [];
+                  var els = root.querySelectorAll ? root.querySelectorAll('[bis_skin_checked],[bis_register],[fdprocessedid],[data-lastpass-root]') : [];
                   for (var i = 0; i < els.length; i++) cleanNode(els[i]);
                 }
                 cleanTree(document.documentElement);
@@ -62,12 +75,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   attributes: true,
                   childList: true,
                   subtree: true,
-                  attributeFilter: ['bis_skin_checked', 'bis_register']
+                  attributeFilter: ['bis_skin_checked', 'bis_register', 'fdprocessedid']
                 });
                 window.addEventListener('DOMContentLoaded', function() {
                   cleanTree(document.documentElement);
-                  setTimeout(function() { cleanTree(document.documentElement); }, 100);
-                  setTimeout(function() { obs.disconnect(); }, 4000);
+                  setTimeout(function() { cleanTree(document.documentElement); }, 50);
+                  setTimeout(function() { cleanTree(document.documentElement); }, 200);
+                  setTimeout(function() { obs.disconnect(); }, 5000);
                 });
               })();
             `,

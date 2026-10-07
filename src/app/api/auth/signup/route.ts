@@ -3,11 +3,9 @@ import crypto from "crypto";
 import {
   UserRepository,
   OrganizationRepository,
-  AgentRepository,
   BillingRepository,
 } from "@sigulon/database";
 import { hashPassword, createAndSetSession, ACTIVE_ORG_COOKIE_NAME } from "@/lib/auth";
-import { VOICE_STACK } from "@/lib/voice-config";
 
 export const dynamic = "force-dynamic";
 
@@ -70,56 +68,6 @@ export async function POST(req: NextRequest) {
       type: "credit_grant",
       idempotencyKey: `welcome:${organization._id}`,
       metadata: { reason: "Welcome trial grant" },
-    });
-
-    // Create starter voice agent
-    await AgentRepository.create({
-      organizationId: organization._id,
-      name: "General Receptionist",
-      status: "active",
-      config: {
-        identity: {
-          name: "Sarah",
-          description: "Friendly front-desk receptionist",
-          language: "hi",
-        },
-        instructions: {
-          systemPrompt: `You are Sarah, a professional AI voice assistant for ${organization.name}. Greet callers warmly, answer their questions, and offer to schedule an appointment or take a callback.`,
-          greeting: `Hello! Thank you for calling ${organization.name}. How can I assist you today?`,
-        },
-        voice: {
-          provider: VOICE_STACK.TTS.PROVIDER,
-          voiceId: "126a0835-beea-4e77-a883-f66eabcf6dd4",
-          model: VOICE_STACK.TTS.MODEL,
-          speed: 1.0,
-        },
-        intelligence: {
-          provider: VOICE_STACK.LLM.PROVIDER,
-          model: VOICE_STACK.LLM.MODEL,
-          temperature: 0.7,
-        },
-        speech: {
-          sttProvider: VOICE_STACK.STT.PROVIDER,
-          sttModel: VOICE_STACK.STT.MODEL,
-          ttsProvider: VOICE_STACK.TTS.PROVIDER,
-          ttsModel: VOICE_STACK.TTS.MODEL,
-        },
-        telephony: {
-          provider: "plivo",
-        },
-        tools: {
-          enabledTools: ["check_availability", "pricing_lookup"],
-        },
-        settings: {
-          interruptionHandling: true,
-          silenceTimeout: 10,
-          maxCallDuration: 600,
-          recordingEnabled: true,
-        },
-        business: {
-          timezone: "Asia/Kolkata",
-        },
-      },
     });
 
     const userAgent = req.headers.get("user-agent") || "";

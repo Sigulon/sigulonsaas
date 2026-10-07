@@ -1,98 +1,47 @@
 "use client";
 
-import { Suspense, useEffect, useState, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
-import { KpiCards } from "@/components/dashboard/kpi-cards";
-import { CallsChart } from "@/components/dashboard/calls-chart";
-import { CallsTable } from "@/components/calls/calls-table";
-import { CallRecord } from "@/lib/types";
+import { Suspense } from "react";
+import { DashboardHero } from "@/components/dashboard/dashboard-hero";
+import { DashboardKpiCards } from "@/components/dashboard/dashboard-kpi-cards";
+import { CallActivityChart } from "@/components/dashboard/call-activity-chart";
+import { AgentPerformanceTable } from "@/components/dashboard/agent-performance-table";
+import { RecentActivityFeed } from "@/components/dashboard/recent-activity-feed";
 
 function DashboardContent() {
-  const searchParams = useSearchParams();
-  const [stats, setStats] = useState({
-    total_calls: 0,
-    answered_calls: 0,
-    answer_rate_percentage: 0,
-    avg_duration_seconds: 0,
-    total_credits_spent: 0,
-    chart_data: [] as { date: string; calls: number; answered: number }[],
-  });
-
-  const [recentCalls, setRecentCalls] = useState<CallRecord[]>([]);
-  const selectedDirection = searchParams.get("direction");
-  const selectedPeriod = searchParams.get("period");
-  const operationDirection = selectedDirection === "inbound" || selectedDirection === "outbound"
-    ? selectedDirection
-    : "all";
-  const operationPeriod = selectedPeriod === "today" || selectedPeriod === "30d"
-    ? selectedPeriod
-    : "7d";
-
-  const loadData = useCallback(async () => {
-    try {
-      const statsParams = new URLSearchParams();
-      if (operationDirection !== "all") statsParams.set("direction", operationDirection);
-      if (operationPeriod !== "7d") statsParams.set("period", operationPeriod);
-      const statsQuery = statsParams.toString() ? `?${statsParams.toString()}` : "";
-      const callsParams = new URLSearchParams({ limit: "10" });
-      if (operationDirection !== "all") callsParams.set("direction", operationDirection);
-      const [statsRes, callsRes] = await Promise.all([
-        fetch(`/api/dashboard/stats${statsQuery}`),
-        fetch(`/api/calls?${callsParams.toString()}`),
-      ]);
-
-      if (statsRes.ok) {
-        const statsData = await statsRes.json();
-        if (statsData.stats) setStats(statsData.stats);
-      }
-
-      if (callsRes.ok) {
-        const callsData = await callsRes.json();
-        setRecentCalls(callsData.calls || []);
-      }
-
-    } catch (e) {
-      console.error("Failed to load dashboard data:", e);
-    }
-  }, [operationDirection, operationPeriod]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- benign mount-fetch idiom.
-    loadData();
-  }, [loadData]);
-
   return (
-    <div className="space-y-8">
-      {/* KPI Cards Strip */}
-      <KpiCards stats={stats} />
+    <div className="space-y-6">
+      {/* 1. Header & Hero */}
+      <DashboardHero />
 
-      {/* Calls Over Time Chart */}
-      <CallsChart data={stats.chart_data} />
+      {/* 2. KPI Cards Row (6 metrics) */}
+      <DashboardKpiCards />
 
-      {/* Recent Dispatched Calls Log */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-              Recent Call Logs
-            </h2>
-            <p className="text-xs text-slate-500">
-              Inspect real-time conversation transcripts, audio playback, and sentiment tagging.
-            </p>
-          </div>
+      {/* 3. Call Activity Chart */}
+      <CallActivityChart />
+
+      {/* 4. Two-Column Section: Agent Performance & Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <AgentPerformanceTable />
         </div>
-
-        <CallsTable
-          initialCalls={recentCalls}
-          operationDirection={operationDirection}
-          operationPeriod={operationPeriod}
-        />
+        <div className="lg:col-span-1">
+          <RecentActivityFeed />
+        </div>
       </div>
-
     </div>
   );
 }
 
 export default function DashboardPage() {
-  return <Suspense fallback={<div className="text-sm text-slate-500">Loading dashboard…</div>}><DashboardContent /></Suspense>;
+  return (
+    <Suspense
+      fallback={
+        <div className="p-8 text-center text-sm text-gray-500">
+          Loading dashboard...
+        </div>
+      }
+    >
+      <DashboardContent />
+    </Suspense>
+  );
 }

@@ -298,6 +298,7 @@ export async function POST(
       replyText = await generateLiveKitChatCompletion({
         messages: conversationMessages,
         systemPrompt,
+        language,
         temperature: agent?.config?.intelligence?.temperature ?? 0.7,
       });
     } catch (llmErr) {
