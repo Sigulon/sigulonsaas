@@ -62,6 +62,7 @@ export class AgentRepository {
     const agent = new AgentModel({
       organizationId: data.organizationId,
       name: data.name.trim(),
+      language: data.config.identity?.language || "hi",
       config: data.config,
       description: data.description ?? null,
       specification: data.specification,
@@ -104,6 +105,9 @@ export class AgentRepository {
     if (updates.bundle !== undefined) {
       agent.bundle = updates.bundle;
       agent.markModified("bundle");
+    }
+    if (updates.config?.identity?.language) {
+      agent.language = updates.config.identity.language;
     }
     if (updates.config) {
       // Deep-merge one level: a partial `voice`/`instructions`/etc. payload

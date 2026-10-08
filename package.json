@@ -11,9 +11,11 @@
     "start": "next start",
     "lint": "eslint .",
     "lint:py": "echo 'TODO: add ruff/mypy for voice-runtime and services/campaign-worker' && exit 0",
+    "test:unit": "vite-node scripts/test-bundle.ts",
     "db:init": "vite-node scripts/create-tables.ts",
     "db:seed": "vite-node scripts/seed-mongodb.ts",
     "db:migrate:voice-stack": "vite-node scripts/migrate-to-consolidated-voice-stack.ts",
+    "db:migrate:bundles": "vite-node scripts/migrate-agents-to-bundle-v2.ts",
     "tunnels": "powershell -ExecutionPolicy Bypass -File scripts/start-tunnels.ps1"
   },
   "dependencies": {

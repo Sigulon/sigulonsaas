@@ -8,6 +8,7 @@ import {
   type CanonicalAgentConfig,
 } from "@sigulon/database";
 import { VOICE_STACK } from "@/lib/voice-config";
+import { validateAgentBundle, compileBundleToSystemPrompt } from "@/lib/agent-bundle";
 
 export const dynamic = "force-dynamic";
 
@@ -174,10 +175,27 @@ export async function PATCH(
         ttsModel: VOICE_STACK.TTS.MODEL,
       };
     }
-    if (body.enabledTools || body.enabled_tools) {
-      partialConfig.tools = {
-        ...existingAgent.config.tools,
-        enabledTools: body.enabledTools || body.enabled_tools,
+    let validatedBundle = body.bundle;
+    if (body.bundle) {
+      const validation = validateAgentBundle(body.bundle);
+      if (!validation.valid || !validation.bundle) {
+        return NextResponse.json(
+          {
+            error: "Agent bundle validation failed.",
+            details: validation.errors,
+          },
+          { status: 400 }
+        );
+      }
+      validatedBundle = validation.bundle;
+      partialConfig.instructions = {
+        ...(partialConfig.instructions || existingAgent.config.instructions),
+        systemPrompt: compileBundleToSystemPrompt(validation.bundle),
+        greeting: validation.bundle.first_response,
+      };
+      partialConfig.identity = {
+        ...(partialConfig.identity || existingAgent.config.identity),
+        language: validation.bundle.exported_from.language,
       };
     }
 
@@ -186,7 +204,7 @@ export async function PATCH(
       status: body.status,
       description: body.description,
       specification: body.specification,
-      bundle: body.bundle,
+      bundle: validatedBundle,
       config: Object.keys(partialConfig).length > 0 ? partialConfig : undefined,
     });
 
@@ -197,6 +215,88 @@ export async function PATCH(
     }
 
     return NextResponse.json({ agent: updated });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
+    const status = (err as NodeJS.ErrnoException).code === "UNAUTHORIZED" ? 401 : 500;
+    return NextResponse.json({ error: errorMsg }, { status });
+  }
+}
+
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const { orgId, role } = await getOrgContext();
+    if (!canCreateAndRun(role)) {
+      return NextResponse.json(
+        { error: "Forbidden: requires member role or higher." },
+        { status: 403 }
+      );
+    }
+
+    const existingAgent = await AgentRepository.findById(id, orgId);
+    if (!existingAgent) {
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
+
+    const body = await req.json();
+    const bundleData = body.bundle || (body.bundle_version === 2 ? body : null);
+
+    if (!bundleData) {
+      return NextResponse.json(
+        { error: "Agent bundle JSON is required for PUT." },
+        { status: 400 }
+      );
+    }
+
+    const validation = validateAgentBundle(bundleData);
+    if (!validation.valid || !validation.bundle) {
+      return NextResponse.json(
+        {
+          error: "Agent bundle validation failed.",
+          details: validation.errors,
+        },
+        { status: 400 }
+      );
+    }
+
+    const validBundle = validation.bundle;
+    const compiledPrompt = compileBundleToSystemPrompt(validBundle);
+    const agentName = body.name?.trim() || validBundle.exported_from.employee_name || existingAgent.name;
+    const language = validBundle.exported_from.language || existingAgent.config.identity.language;
+
+    const updated = await AgentRepository.updateDraft(id, orgId, {
+      name: agentName,
+      status: body.status || existingAgent.status,
+      description: body.description !== undefined ? body.description : existingAgent.description,
+      bundle: validBundle as unknown as Record<string, unknown>,
+      config: {
+        ...existingAgent.config,
+        identity: {
+          ...existingAgent.config.identity,
+          name: agentName,
+          description: validBundle.exported_from.employee_role || existingAgent.config.identity.description,
+          language,
+        },
+        instructions: {
+          ...existingAgent.config.instructions,
+          systemPrompt: compiledPrompt,
+          greeting: validBundle.first_response,
+        },
+      },
+    });
+
+    if (!updated) {
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      agent: updated,
+      bundle: validBundle,
+    });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
     const status = (err as NodeJS.ErrnoException).code === "UNAUTHORIZED" ? 401 : 500;

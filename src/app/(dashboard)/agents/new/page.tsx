@@ -1,856 +1,871 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
-  ArrowRight,
-  Check,
-  Bot,
-  Volume2,
-  FileText,
-  GitFork,
-  Zap,
-  Play,
-  Pause,
   Sparkles,
-  Phone,
-  ShieldAlert,
-  Send,
-  MessageSquare,
-  Mic,
+  Zap,
+  PhoneCall,
+  Check,
+  AlertTriangle,
+  RotateCcw,
+  Save,
   Loader2,
+  FileText,
+  Network,
+  Bot,
+  Globe,
+  Briefcase,
+  HelpCircle,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { createAgent } from "@/lib/api/agents";
+import { AgentBundle, AgentBundleVariable } from "@/lib/agent-bundle/schema";
+import { validateAgentBundle, analyzeBundleVariables } from "@/lib/agent-bundle/validator";
+import { ScriptEditor } from "@/components/editor/script-editor";
+import { VariablesPanel } from "@/components/editor/variables-panel";
+import { FlowGraph } from "@/components/editor/flow-graph";
 
-const STEPS = [
-  { id: 1, title: "Basics" },
-  { id: 2, title: "Voice" },
-  { id: 3, title: "Instructions" },
-  { id: 4, title: "Call Flow" },
-  { id: 5, title: "Actions" },
-  { id: 6, title: "Test" },
-  { id: 7, title: "Publish" },
+interface LanguageOption {
+  code: string;
+  label: string;
+  englishLabel: string;
+}
+
+const LANGUAGES: LanguageOption[] = [
+  { code: "te-IN", label: "తెలుగు", englishLabel: "Telugu" },
+  { code: "hi-IN", label: "हिन्दी", englishLabel: "Hindi" },
+  { code: "ta-IN", label: "தமிழ்", englishLabel: "Tamil" },
+  { code: "kn-IN", label: "ಕನ್ನಡ", englishLabel: "Kannada" },
+  { code: "ml-IN", label: "മലയാളം", englishLabel: "Malayalam" },
+  { code: "mr-IN", label: "मराठी", englishLabel: "Marathi" },
+  { code: "en-IN", label: "English", englishLabel: "English" },
 ];
 
-export default function CreateAgentPage() {
+interface IndustryChip {
+  id: string;
+  label: string;
+  prompt: string;
+}
+
+const INDUSTRY_CHIPS: IndustryChip[] = [
+  {
+    id: "real-estate",
+    label: "🏡 Real estate",
+    prompt:
+      "Call every new enquiry from my Instagram ad for 2BHK and 3BHK luxury apartments, understand what they need and their budget, and book a site visit for this weekend.",
+  },
+  {
+    id: "coaching",
+    label: "📚 Coaching & tuition",
+    prompt:
+      "Call students who enquired about our IIT-JEE and NEET coaching programs, understand their target exam year, and book a free counseling call with our senior mentor.",
+  },
+  {
+    id: "hospital",
+    label: "🏥 Hospital & clinic",
+    prompt:
+      "Call patients requesting a doctor consultation, confirm the required medical department, check whether they prefer morning or evening slots, and confirm the visit.",
+  },
+  {
+    id: "auto",
+    label: "🚗 Car & bike dealer",
+    prompt:
+      "Call leads interested in test-driving our new vehicle, check their preferred model and fuel type, and schedule an executive home test drive at their convenience.",
+  },
+];
+
+function checkLanguageConsistency(languageCode: string, bundle: AgentBundle): string | null {
+  const allText = [
+    bundle.first_response,
+    ...bundle.sections.map((s) => s.prompt),
+  ].join(" ");
+
+  const teluguRegex = /[\u0C00-\u0C7F]/;
+  const devanagariRegex = /[\u0900-\u097F]/;
+  const tamilRegex = /[\u0B80-\u0BFF]/;
+  const kannadaRegex = /[\u0C80-\u0CFF]/;
+  const malayalamRegex = /[\u0D00-\u0D7F]/;
+
+  const hasTelugu = teluguRegex.test(allText);
+  const hasDevanagari = devanagariRegex.test(allText);
+  const hasTamil = tamilRegex.test(allText);
+  const hasKannada = kannadaRegex.test(allText);
+  const hasMalayalam = malayalamRegex.test(allText);
+
+  if (languageCode.startsWith("te")) {
+    if (hasDevanagari || hasTamil || hasKannada || hasMalayalam) {
+      return "Notice: Agent language is set to Telugu (te-IN), but parts of the script contain other Indic scripts. Ensure the script text matches Telugu.";
+    }
+  } else if (languageCode.startsWith("hi")) {
+    if (hasTelugu || hasTamil || hasKannada || hasMalayalam) {
+      return "Notice: Agent language is set to Hindi (hi-IN), but parts of the script contain other Indic scripts. Ensure the script text matches Hindi.";
+    }
+  } else if (languageCode.startsWith("ta")) {
+    if (hasTelugu || hasDevanagari || hasKannada || hasMalayalam) {
+      return "Notice: Agent language is set to Tamil (ta-IN), but parts of the script contain other Indic scripts.";
+    }
+  } else if (languageCode.startsWith("kn")) {
+    if (hasTelugu || hasDevanagari || hasTamil || hasMalayalam) {
+      return "Notice: Agent language is set to Kannada (kn-IN), but parts of the script contain other Indic scripts.";
+    }
+  } else if (languageCode.startsWith("ml")) {
+    if (hasTelugu || hasDevanagari || hasTamil || hasKannada) {
+      return "Notice: Agent language is set to Malayalam (ml-IN), but parts of the script contain other Indic scripts.";
+    }
+  } else if (languageCode.startsWith("mr")) {
+    if (hasTelugu || hasTamil || hasKannada || hasMalayalam) {
+      return "Notice: Agent language is set to Marathi (mr-IN), but parts of the script contain other Indic scripts.";
+    }
+  }
+  return null;
+}
+
+export default function NewAgentPage() {
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState(1);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
-  // Form State
-  const [formData, setFormData] = useState({
-    name: "Insurance Lead Quality Checker",
-    description: "Qualifies health and motor insurance leads in natural Telugu, verifies policy renewal dates and budgets.",
-    industry: "Insurance",
-    useCase: "Policy renewal discount outreach & inbound advisor routing",
-    language: "Telugu",
-    languageCode: "te-IN",
-    voiceName: "Sonic 3.6 Telugu Warm",
-    voiceId: "sonic-te-in-ravi-v1",
-    speed: 1.0,
-    stability: 0.8,
-    pitch: 0.0,
-    phoneNumber: "+91 80 4719 3320",
-    objective: "Confirm lead identity, verify active insurance expiry within 30 days, check budget, and route qualified prospects to senior underwriters.",
-    personality: "Polite, professional, reassuring, conversational South Indian Telugu business tone.",
-    openingMessage: "హలో అండి, {{lead_name}} తో మాట్లాడుతున్నానా? నేను యాక్మే ఇన్సూరెన్స్ నుండి రవిని మాట్లాడుతున్నాను.",
-    instructions: "1. Confirm lead identity immediately with warmth.\n2. Inquire if they currently hold active insurance for their vehicle or family.\n3. Ascertain renewal timeline within 30 days.\n4. Check approximate budget and claim history.\n5. If interested, confirm callback time; otherwise politely conclude.",
-    qualificationCriteria: "Lead owns a vehicle or needs health coverage, policy expires within 45 days, open to receiving a competitive quote.",
-    forbiddenRules: "Never quote binding premium numbers without underwriter calculation. Never harass customer. Do not ask for OTP, passwords, or bank PINs.",
-    actions: {
-      transferCall: true,
-      transferNumber: "+91 80 4719 3399",
-      sendSms: true,
-      smsTemplate: "Dear {{lead_name}}, thank you for speaking with Acme Insurance. Our advisor will reach you shortly.",
-      webhookUrl: "https://api.acmeinsurance.in/v1/leads/webhook",
-      createCrmLead: true,
-      updateCrm: true,
-      scheduleCallback: true,
-    },
-  });
+  // Stage: "input" (Stage A) | "script" (Stage B)
+  const [stage, setStage] = useState<"input" | "script">("input");
 
-  // Simulated browser test console state
-  const [testCallStatus, setTestCallStatus] = useState<"idle" | "calling" | "connected">("idle");
-  const [testTranscript, setTestTranscript] = useState<Array<{ speaker: string; text: string }>>([]);
+  // Stage A Input States
+  const [mode, setMode] = useState<"instant" | "bulk">("instant");
+  const [language, setLanguage] = useState<string>("te-IN");
+  const [description, setDescription] = useState<string>("");
+  const [agentName, setAgentName] = useState<string>("");
 
-  const handleNext = () => {
-    if (currentStep < 7) {
-      setCurrentStep((s) => s + 1);
+  // Generation Progress & State
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStep, setGenerationStep] = useState<string>("understanding");
+  const [generationMessage, setGenerationMessage] = useState<string>("");
+  const [generationError, setGenerationError] = useState<string | null>(null);
+
+  // Stage B Script View States
+  const [bundle, setBundle] = useState<AgentBundle | null>(null);
+  const [activeTab, setActiveTab] = useState<"script" | "graph">("script");
+  const [highlightedSectionKey, setHighlightedSectionKey] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<string[]>([]);
+
+  // Validation State for Bundle
+  const validationResult = useMemo(() => {
+    if (!bundle) return { valid: false, errors: [] };
+    return validateAgentBundle(bundle);
+  }, [bundle]);
+
+  const variableAnalysis = useMemo(() => {
+    if (!bundle) {
+      return { usedVars: new Set<string>(), definedVars: new Set<string>(), unusedVars: [], undefinedVars: [] };
     }
-  };
+    return analyzeBundleVariables(bundle);
+  }, [bundle]);
 
-  const handlePrev = () => {
-    if (currentStep > 1) {
-      setCurrentStep((s) => s - 1);
+  const languageMismatchWarning = useMemo(() => {
+    if (!bundle) return null;
+    return checkLanguageConsistency(bundle.exported_from.language, bundle);
+  }, [bundle]);
+
+  // Handle generation via POST /api/agents/generate
+  const handleGenerate = async () => {
+    const trimmedPrompt = description.trim();
+    if (!trimmedPrompt || trimmedPrompt.length < 10) {
+      setGenerationError("Please provide a prompt description of at least 10 characters.");
+      return;
     }
-  };
 
-  const handleStartTestCall = () => {
-    setTestCallStatus("calling");
-    setTestTranscript([]);
-    setTimeout(() => {
-      setTestCallStatus("connected");
-      setTestTranscript([
-        { speaker: "Agent", text: formData.openingMessage.replace("{{lead_name}}", "Praveen") },
-      ]);
-    }, 1200);
-  };
+    setIsGenerating(true);
+    setGenerationError(null);
+    setGenerationStep("understanding");
+    setGenerationMessage("Analyzing requirements and intent…");
 
-  const handlePublish = async () => {
-    setIsSubmitting(true);
     try {
-      await createAgent({
-        name: formData.name,
-        role: `${formData.industry} Specialist`,
-        description: formData.description,
-        industry: formData.industry as any,
-        useCase: formData.useCase,
-        language: formData.language,
-        languageCode: formData.languageCode,
-        voiceName: formData.voiceName,
-        voiceId: formData.voiceId,
-        speed: formData.speed,
-        stability: formData.stability,
-        pitch: formData.pitch,
-        phoneNumber: formData.phoneNumber,
-        objective: formData.objective,
-        personality: formData.personality,
-        openingMessage: formData.openingMessage,
-        instructions: formData.instructions,
-        qualificationCriteria: formData.qualificationCriteria,
-        forbiddenRules: formData.forbiddenRules,
-        actions: formData.actions,
-        status: "ready",
+      // Use SSE streaming endpoint for responsive step-by-step progress
+      const response = await fetch("/api/agents/generate?stream=true", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify({
+          description: trimmedPrompt,
+          mode,
+          language,
+          agentName: agentName.trim() || undefined,
+        }),
       });
-      router.push("/agents");
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Generation failed (${response.status})`);
+      }
+
+      if (response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let finalBundle: AgentBundle | null = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("data:")) {
+              const dataStr = trimmed.slice(5).trim();
+              try {
+                const event = JSON.parse(dataStr);
+                if (event.step) {
+                  setGenerationStep(event.step);
+                }
+                if (event.message) {
+                  setGenerationMessage(event.message);
+                }
+                if (event.step === "complete" && event.bundle) {
+                  finalBundle = event.bundle;
+                }
+                if (event.step === "error") {
+                  throw new Error(event.error || "Generation error occurred");
+                }
+              } catch (e: any) {
+                if (e.message && e.message !== "Unexpected end of JSON input") {
+                  console.error("Stream parse error:", e);
+                }
+              }
+            }
+          }
+        }
+
+        if (finalBundle) {
+          setBundle(finalBundle);
+          setStage("script");
+          return;
+        }
+      }
+
+      // Non-streaming fallback if stream didn't deliver complete bundle
+      const fallbackRes = await fetch("/api/agents/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: trimmedPrompt,
+          mode,
+          language,
+          agentName: agentName.trim() || undefined,
+        }),
+      });
+
+      if (!fallbackRes.ok) {
+        const errJson = await fallbackRes.json().catch(() => ({}));
+        throw new Error(errJson.error || "Failed to generate agent bundle");
+      }
+
+      const resData = await fallbackRes.json();
+      if (resData.bundle) {
+        setBundle(resData.bundle);
+        setStage("script");
+      } else {
+        throw new Error("No bundle returned from generator");
+      }
+    } catch (err: any) {
+      console.error("Agent generation error:", err);
+      setGenerationError(err.message || "Failed to generate agent script. Please try again.");
     } finally {
-      setIsSubmitting(false);
+      setIsGenerating(false);
+    }
+  };
+
+  // Update bundle in state
+  const handleUpdateBundle = (updated: AgentBundle) => {
+    setBundle(updated);
+  };
+
+  const handleUpdateVariables = (newVars: AgentBundleVariable[]) => {
+    if (!bundle) return;
+    setBundle({
+      ...bundle,
+      variables: newVars,
+    });
+  };
+
+  // Save agent to database
+  const handleSaveAgent = async () => {
+    if (!bundle) return;
+
+    // Strict client-side validation
+    const validation = validateAgentBundle(bundle);
+    if (!validation.valid) {
+      setFieldErrors(validation.errors);
+      setSaveError("Please fix validation errors before saving the agent.");
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+    setFieldErrors([]);
+
+    try {
+      const response = await fetch("/api/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: bundle.exported_from.employee_name || "AI Agent",
+          bundle,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (data.details && Array.isArray(data.details)) {
+          setFieldErrors(data.details);
+        }
+        throw new Error(data.error || "Failed to create agent");
+      }
+
+      const createdAgentId = data.agent?.id || data.agent?._id;
+      if (createdAgentId) {
+        router.push(`/agents/${createdAgentId}`);
+      } else {
+        router.push("/agents");
+      }
+    } catch (err: any) {
+      console.error("Save agent error:", err);
+      setSaveError(err.message || "Failed to save agent to MongoDB.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
-      {/* Top Header & Breadcrumb */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/agents"
-            className="p-1.5 rounded-lg border border-gray-200 dark:border-neutral-800 text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">
-              Create AI agent
-            </h1>
-            <p className="text-xs text-gray-500 dark:text-neutral-400">
-              Configure voice parameters, instructions, conversation flow, and integrations.
-            </p>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20">
+      {/* Top Navbar */}
+      <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-6 py-3.5">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/agents"
+              className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-900 dark:text-white text-base">
+                  {stage === "input" ? "Natural Language Agent Builder" : bundle?.exported_from.employee_name || "Agent Script"}
+                </span>
+                <span className="text-[10px] uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  Bundle v2
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                {stage === "input"
+                  ? "Describe requirements in plain text to generate a telephony agent"
+                  : `Mode: ${bundle?.exported_from.mode === "instant" ? "Instant Lead Calling" : "Bulk Calling"} • ${
+                      LANGUAGES.find((l) => l.code === bundle?.exported_from.language)?.label || bundle?.exported_from.language
+                    }`}
+              </p>
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Progress Steps Indicator */}
-      <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-3 shadow-2xs">
-        <div className="flex items-center justify-between overflow-x-auto gap-2">
-          {STEPS.map((step) => {
-            const isCompleted = currentStep > step.id;
-            const isCurrent = currentStep === step.id;
-
-            return (
-              <button
-                key={step.id}
-                onClick={() => setCurrentStep(step.id)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium shrink-0 transition-colors ${
-                  isCurrent
-                    ? "bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 font-semibold"
-                    : isCompleted
-                    ? "text-emerald-700 dark:text-emerald-400"
-                    : "text-gray-400 dark:text-neutral-500 hover:text-gray-700"
-                }`}
-              >
-                <div
-                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono ${
-                    isCurrent
-                      ? "bg-blue-600 text-white"
-                      : isCompleted
-                      ? "bg-emerald-600 text-white"
-                      : "bg-gray-100 dark:bg-neutral-800 text-gray-500"
-                  }`}
-                >
-                  {isCompleted ? <Check className="w-3 h-3 stroke-[3]" /> : step.id}
-                </div>
-                <span>{step.title}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* STEP 1: BASICS */}
-      {currentStep === 1 && (
-        <Card className="border-gray-200 dark:border-neutral-800 shadow-xs">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">1. Agent Basics</CardTitle>
-            <p className="text-xs text-gray-500 dark:text-neutral-400">
-              Set the agent identity, target industry, and core use case.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                Agent Name *
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="e.g. Insurance Lead Quality Checker"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                Description
-              </label>
-              <textarea
-                rows={2}
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="What does this voice agent do?"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                  Industry *
-                </label>
-                <select
-                  value={formData.industry}
-                  onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="Insurance">Insurance</option>
-                  <option value="Real Estate">Real Estate</option>
-                  <option value="Education">Education</option>
-                  <option value="Loans">Loans & Credit</option>
-                  <option value="Healthcare">Healthcare</option>
-                  <option value="Other">Other SMB</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                  Primary Use Case
-                </label>
-                <input
-                  type="text"
-                  value={formData.useCase}
-                  onChange={(e) => setFormData({ ...formData, useCase: e.target.value })}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="e.g. Lead Qualification / Inbound Inquiries"
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* STEP 2: VOICE */}
-      {currentStep === 2 && (
-        <Card className="border-gray-200 dark:border-neutral-800 shadow-xs">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">2. Voice & Telephony</CardTitle>
-            <p className="text-xs text-gray-500 dark:text-neutral-400">
-              Select Indian regional language, ultra-low latency Cartesia voice model, and assigned number.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                  Language *
-                </label>
-                <select
-                  value={formData.language}
-                  onChange={(e) => {
-                    const l = e.target.value;
-                    const code = l === "Telugu" ? "te-IN" : l === "Hindi" ? "hi-IN" : l === "Tamil" ? "ta-IN" : "en-IN";
-                    setFormData({ ...formData, language: l, languageCode: code });
-                  }}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="Telugu">Telugu (తెలుగు)</option>
-                  <option value="Hindi">Hindi (हिन्दी)</option>
-                  <option value="English">Indian English</option>
-                  <option value="Tamil">Tamil (தமிழ்)</option>
-                  <option value="Hinglish">Hinglish</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                  TTS Voice Provider
-                </label>
-                <input
-                  type="text"
-                  readOnly
-                  value="Cartesia Sonic 3.6 (Direct LiveKit Plugin)"
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 cursor-not-allowed"
-                />
-              </div>
-            </div>
-
-            {/* Voice Model Selector & Audio Preview */}
-            <div className="p-4 rounded-xl border border-gray-200 dark:border-neutral-800 bg-gray-50/50 dark:bg-neutral-850/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                  {formData.voiceName}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-neutral-400 mt-0.5">
-                  Natural South Asian intonation · 90ms synthesis latency
-                </div>
-              </div>
+          {stage === "script" && bundle && (
+            <div className="flex items-center gap-2.5">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setIsPlayingAudio(!isPlayingAudio)}
-                className="gap-2 shrink-0"
+                onClick={() => setStage("input")}
+                className="text-xs h-9 text-slate-600 dark:text-slate-300"
               >
-                {isPlayingAudio ? (
+                <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                Prompt / Settings
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGenerate}
+                disabled={isGenerating}
+                className="text-xs h-9 text-amber-600 border-amber-500/30 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+              >
+                {isGenerating ? (
                   <>
-                    <Pause className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Stop Preview</span>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                    Regenerating…
                   </>
                 ) : (
                   <>
-                    <Play className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Play Sample Voice</span>
+                    <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                    Regenerate
+                  </>
+                )}
+              </Button>
+
+              <Button
+                size="sm"
+                onClick={handleSaveAgent}
+                disabled={isSaving || !validationResult.valid}
+                className="text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                    Saving Agent…
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-3.5 w-3.5 mr-1.5" />
+                    Save Agent
                   </>
                 )}
               </Button>
             </div>
+          )}
+        </div>
+      </header>
 
-            {/* Speed & Stability Sliders */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-              <div>
-                <div className="flex items-center justify-between text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1.5">
-                  <span>Speech Speed</span>
-                  <span className="font-mono">{formData.speed}x</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.8"
-                  max="1.3"
-                  step="0.05"
-                  value={formData.speed}
-                  onChange={(e) => setFormData({ ...formData, speed: parseFloat(e.target.value) })}
-                  className="w-full accent-blue-600 cursor-pointer"
-                />
+      {/* Main Container */}
+      <main className="max-w-7xl mx-auto px-6 pt-6">
+        {/* STAGE A: Natural-Language Input Form */}
+        {stage === "input" && (
+          <div className="max-w-3xl mx-auto space-y-6">
+            <div className="text-center space-y-2 pb-2">
+              <div className="inline-flex items-center justify-center p-2 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 mb-1">
+                <Sparkles className="h-7 w-7" />
               </div>
-
-              <div>
-                <div className="flex items-center justify-between text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1.5">
-                  <span>Voice Stability</span>
-                  <span className="font-mono">{Math.round(formData.stability * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="1.0"
-                  step="0.05"
-                  value={formData.stability}
-                  onChange={(e) => setFormData({ ...formData, stability: parseFloat(e.target.value) })}
-                  className="w-full accent-blue-600 cursor-pointer"
-                />
-              </div>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                What should your voice agent do?
+              </h1>
+              <p className="text-sm text-slate-500 max-w-lg mx-auto">
+                Type what you want your agent to ask, confirm, or pitch. Our Indian telephony architect will create a full Bundle v2 script graph.
+              </p>
             </div>
 
-            {/* Phone Number Binding */}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                Assigned Phone Number (Caller ID)
-              </label>
-              <select
-                value={formData.phoneNumber}
-                onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-              >
-                <option value="+91 80 4719 3320">+91 80 4719 3320 (Bangalore — Active)</option>
-                <option value="+91 40 4912 8840">+91 40 4912 8840 (Hyderabad — Active)</option>
-                <option value="+91 22 5064 1190">+91 22 5064 1190 (Mumbai — Active)</option>
-              </select>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            {/* Stage A Controls Card */}
+            <Card className="border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <CardContent className="p-6 space-y-6">
+                {/* Mode Selector Toggle */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Calling Mode
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setMode("instant")}
+                      className={`flex flex-col text-left p-3.5 rounded-xl border transition-all ${
+                        mode === "instant"
+                          ? "border-amber-500 bg-amber-500/5 text-slate-900 dark:text-white shadow-sm ring-1 ring-amber-500/20"
+                          : "border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full mb-1">
+                        <span className="font-bold text-sm flex items-center gap-1.5">
+                          <Zap className="h-4 w-4 text-amber-500" />
+                          Instant Lead Calling
+                        </span>
+                        {mode === "instant" && (
+                          <div className="h-4 w-4 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center">
+                            <Check className="h-2.5 w-2.5 stroke-[3]" />
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-xs text-slate-500">
+                        Dials outbound within 15 seconds of an ad lead or webhook.
+                      </span>
+                    </button>
 
-      {/* STEP 3: INSTRUCTIONS */}
-      {currentStep === 3 && (
-        <Card className="border-gray-200 dark:border-neutral-800 shadow-xs">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">3. Prompt Instructions & Guardrails</CardTitle>
-            <p className="text-xs text-gray-500 dark:text-neutral-400">
-              Define the AI agent objective, opening message, qualification rubric, and strict boundaries.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                Opening Message (Spoken word-for-word immediately on pickup) *
-              </label>
-              <textarea
-                rows={2}
-                value={formData.openingMessage}
-                onChange={(e) => setFormData({ ...formData, openingMessage: e.target.value })}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono text-xs"
-                placeholder="Opening line..."
-              />
-              <span className="text-[11px] text-gray-400">
-                Variables like <code>&#123;&#123;lead_name&#125;&#125;</code>, <code>&#123;&#123;phone&#125;&#125;</code> will be injected automatically.
-              </span>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                Agent Objective & Core Goal *
-              </label>
-              <textarea
-                rows={2}
-                value={formData.objective}
-                onChange={(e) => setFormData({ ...formData, objective: e.target.value })}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                Conversation Instructions (Step-by-step guidance)
-              </label>
-              <textarea
-                rows={4}
-                value={formData.instructions}
-                onChange={(e) => setFormData({ ...formData, instructions: e.target.value })}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono text-xs leading-relaxed"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-emerald-700 dark:text-emerald-400 mb-1">
-                  Qualification Criteria
-                </label>
-                <textarea
-                  rows={3}
-                  value={formData.qualificationCriteria}
-                  onChange={(e) => setFormData({ ...formData, qualificationCriteria: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/30 dark:bg-neutral-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-red-700 dark:text-red-400 mb-1">
-                  Things the agent must NEVER do (Guardrails)
-                </label>
-                <textarea
-                  rows={3}
-                  value={formData.forbiddenRules}
-                  onChange={(e) => setFormData({ ...formData, forbiddenRules: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50/30 dark:bg-neutral-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-red-500"
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* STEP 4: CALL FLOW */}
-      {currentStep === 4 && (
-        <Card className="border-gray-200 dark:border-neutral-800 shadow-xs">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">4. Visual Call Flow Graph</CardTitle>
-            <p className="text-xs text-gray-500 dark:text-neutral-400">
-              Interactive node graph defining how the conversation branches and terminates.
-            </p>
-          </CardHeader>
-          <CardContent>
-            {/* Visual Flow diagram container */}
-            <div className="bg-gray-50/70 dark:bg-neutral-950 p-6 rounded-xl border border-gray-200 dark:border-neutral-800 flex flex-col items-center gap-3">
-              {/* Start Node */}
-              <div className="px-4 py-2 rounded-full bg-blue-600 text-white font-semibold text-xs shadow-xs">
-                ▶ Start Call
-              </div>
-              <div className="w-0.5 h-6 bg-gray-300 dark:bg-neutral-700" />
-
-              {/* Greeting Node */}
-              <div className="w-full max-w-md p-3.5 bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-700 shadow-2xs text-center">
-                <div className="text-xs font-semibold text-gray-900 dark:text-white">
-                  1. Greeting & Identity Verification
-                </div>
-                <div className="text-[11px] text-gray-500 dark:text-neutral-400 mt-0.5">
-                  Confirm customer name and introduction in {formData.language}
-                </div>
-              </div>
-              <div className="w-0.5 h-6 bg-gray-300 dark:bg-neutral-700" />
-
-              {/* Requirement Check Node */}
-              <div className="w-full max-w-md p-3.5 bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-700 shadow-2xs text-center">
-                <div className="text-xs font-semibold text-gray-900 dark:text-white">
-                  2. Understand Requirement & Discovery
-                </div>
-                <div className="text-[11px] text-gray-500 dark:text-neutral-400 mt-0.5">
-                  Inquire policy expiration date and budget constraints
-                </div>
-              </div>
-              <div className="w-0.5 h-6 bg-gray-300 dark:bg-neutral-700" />
-
-              {/* Decision Diamond */}
-              <div className="px-5 py-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs font-semibold">
-                ◆ Qualified Lead?
-              </div>
-
-              {/* Split Branches */}
-              <div className="w-full max-w-lg grid grid-cols-2 gap-4 mt-2">
-                <div className="flex flex-col items-center">
-                  <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mb-2">
-                    ✓ Yes (Meets criteria)
-                  </span>
-                  <div className="w-full p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg border border-emerald-200 dark:border-emerald-800 text-center text-xs font-medium text-emerald-800 dark:text-emerald-300">
-                    Live Human Transfer or Book Callback
+                    <button
+                      type="button"
+                      onClick={() => setMode("bulk")}
+                      className={`flex flex-col text-left p-3.5 rounded-xl border transition-all ${
+                        mode === "bulk"
+                          ? "border-amber-500 bg-amber-500/5 text-slate-900 dark:text-white shadow-sm ring-1 ring-amber-500/20"
+                          : "border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full mb-1">
+                        <span className="font-bold text-sm flex items-center gap-1.5">
+                          <PhoneCall className="h-4 w-4 text-amber-500" />
+                          Bulk Calling
+                        </span>
+                        {mode === "bulk" && (
+                          <div className="h-4 w-4 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center">
+                            <Check className="h-2.5 w-2.5 stroke-[3]" />
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-xs text-slate-500">
+                        High-throughput outbound campaigns from CSV lists.
+                      </span>
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex flex-col items-center">
-                  <span className="text-[11px] font-semibold text-gray-500 dark:text-neutral-400 mb-2">
-                    ✗ No (Not interested)
-                  </span>
-                  <div className="w-full p-3 bg-gray-100 dark:bg-neutral-800 rounded-lg border border-gray-200 dark:border-neutral-700 text-center text-xs font-medium text-gray-700 dark:text-neutral-300">
-                    Polite Close & Log Disposition
+                {/* Language Pills */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                      <Globe className="h-3.5 w-3.5" />
+                      Agent Language
+                    </label>
+                    <span className="text-xs text-slate-400">
+                      Scripts & responses will be crafted in this language
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {LANGUAGES.map((lang) => {
+                      const isSelected = language === lang.code;
+                      return (
+                        <button
+                          key={lang.code}
+                          type="button"
+                          onClick={() => setLanguage(lang.code)}
+                          className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                            isSelected
+                              ? "bg-amber-500 text-slate-950 shadow-sm"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700/60"
+                          }`}
+                        >
+                          <span>{lang.label}</span>
+                          <span className="text-[10px] opacity-75 font-normal">({lang.englishLabel})</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
-      {/* STEP 5: ACTIONS */}
-      {currentStep === 5 && (
-        <Card className="border-gray-200 dark:border-neutral-800 shadow-xs">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">5. Automated Post-Call Actions</CardTitle>
-            <p className="text-xs text-gray-500 dark:text-neutral-400">
-              Trigger instant SMS, CRM sync, or live human call transfers upon qualification.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Action Item: Live Human Transfer */}
-            <div className="p-4 rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                    Transfer call to human closer
+                {/* Industry Pre-Fill Chips */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                      <Briefcase className="h-3.5 w-3.5" />
+                      Quick Templates
+                    </label>
+                    <span className="text-xs text-slate-400">Click to pre-fill prompt below</span>
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-neutral-400">
-                    Warm transfer live caller if they ask for an agent or meet high-ticket qualification
+                  <div className="flex flex-wrap gap-2">
+                    {INDUSTRY_CHIPS.map((chip) => (
+                      <button
+                        key={chip.id}
+                        type="button"
+                        onClick={() => setDescription(chip.prompt)}
+                        className="px-3 py-1 rounded-lg text-xs bg-slate-100 dark:bg-slate-800/80 hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={formData.actions.transferCall}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      actions: { ...formData.actions, transferCall: e.target.checked },
-                    })
-                  }
-                  className="w-4 h-4 accent-blue-600 rounded cursor-pointer"
-                />
-              </div>
 
-              {formData.actions.transferCall && (
+                {/* Natural Language Prompt Textarea */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                    <span>Agent Instructions & Script Goal</span>
+                    <span className="text-slate-400 font-normal">{description.length} characters</span>
+                  </label>
+                  <textarea
+                    rows={5}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="e.g. Call every new enquiry from my Instagram ad, ask what they need, and book a visit."
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-4 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/50 resize-y"
+                  />
+                  <p className="text-xs text-slate-400">
+                    Include who the caller is, what 2-3 questions to ask, how to confirm next steps, and any key FAQs.
+                  </p>
+                </div>
+
+                {/* Error Banner */}
+                {generationError && (
+                  <div className="p-3.5 rounded-xl border border-red-200 bg-red-50 dark:border-red-900/60 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-xs flex items-start gap-2.5">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-500" />
+                    <div>
+                      <span className="font-bold">Generation Error: </span>
+                      {generationError}
+                    </div>
+                  </div>
+                )}
+
+                {/* Step Progress Display while Generating */}
+                {isGenerating && (
+                  <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-3">
+                    <div className="flex items-center justify-between text-xs font-semibold text-slate-900 dark:text-white">
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                        {generationMessage || "Generating Agent Bundle v2…"}
+                      </span>
+                      <span className="font-mono text-[10px] uppercase text-amber-600 dark:text-amber-400">
+                        {generationStep}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { key: "understanding", label: "1. Intent" },
+                        { key: "designing", label: "2. Graph" },
+                        { key: "writing", label: "3. Script" },
+                        { key: "validating", label: "4. Schema" },
+                      ].map((s, idx) => {
+                        const stepOrder = ["understanding", "designing", "writing", "validating"];
+                        const currentIdx = stepOrder.indexOf(generationStep);
+                        const isDone = currentIdx > idx;
+                        const isCurrent = currentIdx === idx;
+                        return (
+                          <div
+                            key={s.key}
+                            className={`p-2 rounded-lg text-center text-[11px] font-semibold transition-colors ${
+                              isDone
+                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                                : isCurrent
+                                ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 animate-pulse"
+                                : "bg-slate-100 dark:bg-slate-800/60 text-slate-400"
+                            }`}
+                          >
+                            {s.label}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Submit Action */}
                 <div className="pt-2">
-                  <label className="block text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                    Destination Phone Number
+                  <Button
+                    type="button"
+                    onClick={handleGenerate}
+                    disabled={isGenerating || description.trim().length < 5}
+                    className="w-full h-11 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm rounded-xl shadow-sm flex items-center justify-center gap-2"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Architecting Voice Agent…
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        Generate Agent Script
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* STAGE B: Editable Script View */}
+        {stage === "script" && bundle && (
+          <div className="space-y-6">
+            {/* Top Info Bar */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Agent Name:
                   </label>
                   <input
                     type="text"
-                    value={formData.actions.transferNumber}
+                    value={bundle.exported_from.employee_name}
                     onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        actions: { ...formData.actions, transferNumber: e.target.value },
+                      setBundle({
+                        ...bundle,
+                        exported_from: {
+                          ...bundle.exported_from,
+                          employee_name: e.target.value,
+                        },
                       })
                     }
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-neutral-700 font-mono"
+                    className="px-2.5 py-1 text-sm font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                 </div>
-              )}
-            </div>
 
-            {/* Action Item: SMS Notification */}
-            <div className="p-4 rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                    Send Follow-up SMS
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-neutral-400">
-                    Immediately text quote link or advisor confirmation via Plivo trunk
-                  </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 font-semibold text-slate-700 dark:text-slate-300">
+                    {bundle.exported_from.mode === "instant" ? "⚡ Instant Lead" : "📞 Bulk Campaign"}
+                  </span>
+                  <span className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 font-semibold text-slate-700 dark:text-slate-300">
+                    {LANGUAGES.find((l) => l.code === bundle.exported_from.language)?.label || bundle.exported_from.language}
+                  </span>
+                  <span className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 font-mono">
+                    {bundle.sections.length} Sections
+                  </span>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={formData.actions.sendSms}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      actions: { ...formData.actions, sendSms: e.target.checked },
-                    })
-                  }
-                  className="w-4 h-4 accent-blue-600 rounded cursor-pointer"
-                />
               </div>
 
-              {formData.actions.sendSms && (
-                <div className="pt-2">
-                  <label className="block text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                    SMS Template Text
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={formData.actions.smsTemplate}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        actions: { ...formData.actions, smsTemplate: e.target.value },
-                      })
-                    }
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-neutral-700 font-mono"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Action Item: Webhook Sync */}
-            <div className="p-4 rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                    CRM Webhook Integration
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-neutral-400">
-                    POST call payload, recording URL, and qualification score to external CRM
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={Boolean(formData.actions.webhookUrl)}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      actions: {
-                        ...formData.actions,
-                        webhookUrl: e.target.checked
-                          ? "https://api.acmeinsurance.in/v1/leads/webhook"
-                          : "",
-                      },
-                    })
-                  }
-                  className="w-4 h-4 accent-blue-600 rounded cursor-pointer"
-                />
-              </div>
-
-              {Boolean(formData.actions.webhookUrl) && (
-                <div className="pt-2">
-                  <label className="block text-xs font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                    Endpoint URL
-                  </label>
-                  <input
-                    type="url"
-                    value={formData.actions.webhookUrl}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        actions: { ...formData.actions, webhookUrl: e.target.value },
-                      })
-                    }
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-neutral-700 font-mono"
-                  />
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* STEP 6: TEST */}
-      {currentStep === 6 && (
-        <Card className="border-gray-200 dark:border-neutral-800 shadow-xs">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">6. Interactive Voice Simulator</CardTitle>
-            <p className="text-xs text-gray-500 dark:text-neutral-400">
-              Test conversation flow, voice naturalness, and latency in the browser.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="p-6 rounded-xl border border-gray-200 dark:border-neutral-800 bg-gray-50/50 dark:bg-neutral-950 flex flex-col items-center justify-center text-center">
-              <div
-                className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-all ${
-                  testCallStatus === "connected"
-                    ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-600 ring-8 ring-emerald-500/10"
-                    : "bg-blue-100 dark:bg-blue-950 text-blue-600"
-                }`}
-              >
-                <Mic className="w-7 h-7" />
-              </div>
-
-              <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                {testCallStatus === "idle" && "Ready to test in browser"}
-                {testCallStatus === "calling" && "Connecting to LiveKit runtime..."}
-                {testCallStatus === "connected" && "● Connected (Live Audio)"}
-              </div>
-
-              <div className="text-xs text-gray-500 dark:text-neutral-400 mt-1 max-w-sm mb-4">
-                Simulate a conversation using your microphone or inspect the agent's synthesized opening.
-              </div>
-
+              {/* Validation Status Indicator */}
               <div className="flex items-center gap-2">
-                {testCallStatus === "idle" ? (
-                  <Button variant="primary" size="sm" onClick={handleStartTestCall} className="gap-2">
-                    <Play className="w-3.5 h-3.5" />
-                    <span>Call agent</span>
-                  </Button>
+                {validationResult.valid ? (
+                  <div className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    <Check className="h-3.5 w-3.5" />
+                    <span>Bundle Valid</span>
+                  </div>
                 ) : (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setTestCallStatus("idle")}
-                    className="gap-2"
-                  >
-                    <span>End test</span>
-                  </Button>
+                  <div className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    <span>{validationResult.errors.length} Schema Issue(s)</span>
+                  </div>
                 )}
+
+                {/* View Switcher Tabs */}
+                <div className="flex items-center rounded-lg border border-slate-200 dark:border-slate-800 p-0.5 bg-slate-100 dark:bg-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("script")}
+                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
+                      activeTab === "script"
+                        ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
+                        : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    Script
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("graph")}
+                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
+                      activeTab === "graph"
+                        ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
+                        : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <Network className="h-3.5 w-3.5" />
+                    Flow Graph
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Live Transcript Display */}
-            {testTranscript.length > 0 && (
-              <div className="p-4 rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-2">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Live Transcript
+            {/* Language Script Consistency Warning */}
+            {languageMismatchWarning && (
+              <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200 text-xs flex items-start gap-2.5">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
+                <div>
+                  <span className="font-bold">Script Language Notice: </span>
+                  {languageMismatchWarning}
                 </div>
-                {testTranscript.map((line, idx) => (
-                  <div key={idx} className="text-xs leading-relaxed">
-                    <span className="font-semibold text-blue-600">{line.speaker}: </span>
-                    <span className="text-gray-800 dark:text-neutral-200">{line.text}</span>
-                  </div>
-                ))}
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
 
-      {/* STEP 7: PUBLISH */}
-      {currentStep === 7 && (
-        <Card className="border-gray-200 dark:border-neutral-800 shadow-xs">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">7. Review & Publish</CardTitle>
-            <p className="text-xs text-gray-500 dark:text-neutral-400">
-              Confirm agent specifications before deploying to live telephony workers.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 space-y-2 text-xs">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-gray-400">Agent Name:</span>
-                  <div className="font-semibold text-gray-900 dark:text-white mt-0.5">
-                    {formData.name}
-                  </div>
+            {/* Save Error or Validation Errors */}
+            {(saveError || fieldErrors.length > 0) && (
+              <div className="p-4 rounded-xl border border-red-200 bg-red-50 dark:border-red-900/60 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-xs space-y-1.5">
+                <div className="font-bold flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-500" />
+                  {saveError || "Validation Errors:"}
                 </div>
-                <div>
-                  <span className="text-gray-400">Industry:</span>
-                  <div className="font-semibold text-gray-900 dark:text-white mt-0.5">
-                    {formData.industry}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-gray-400">Language:</span>
-                  <div className="font-semibold text-gray-900 dark:text-white mt-0.5">
-                    {formData.language} ({formData.languageCode})
-                  </div>
-                </div>
-                <div>
-                  <span className="text-gray-400">Assigned Number:</span>
-                  <div className="font-mono font-semibold text-gray-900 dark:text-white mt-0.5">
-                    {formData.phoneNumber}
-                  </div>
-                </div>
+                {fieldErrors.length > 0 && (
+                  <ul className="list-disc pl-5 space-y-1">
+                    {fieldErrors.map((err, idx) => (
+                      <li key={idx}>{err}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {/* Graph Tab View */}
+            {activeTab === "graph" && (
+              <Card className="border-slate-200 dark:border-slate-800 shadow-sm p-4">
+                <FlowGraph
+                  bundle={bundle}
+                  selectedSectionKey={highlightedSectionKey}
+                  onSelectSection={(key) => {
+                    setHighlightedSectionKey(key);
+                    setActiveTab("script");
+                  }}
+                />
+              </Card>
+            )}
+
+            {/* Script Tab View */}
+            {activeTab === "script" && (
+              <div className="space-y-6">
+                {/* Numbered Section Cards via ScriptEditor */}
+                <ScriptEditor
+                  bundle={bundle}
+                  highlightedSectionKey={highlightedSectionKey}
+                  onUpdateBundle={handleUpdateBundle}
+                />
+
+                {/* Variables Panel */}
+                <VariablesPanel
+                  variables={bundle.variables}
+                  unusedVariables={variableAnalysis.unusedVars}
+                  undefinedVariables={variableAnalysis.undefinedVars}
+                  onChangeVariables={handleUpdateVariables}
+                />
+              </div>
+            )}
+
+            {/* Bottom Action Footer */}
+            <div className="sticky bottom-4 z-30 p-4 rounded-2xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-lg flex items-center justify-between">
+              <div className="text-xs text-slate-500">
+                {validationResult.valid ? (
+                  <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5">
+                    <Check className="h-3.5 w-3.5" />
+                    Bundle v2 ready to save and execute
+                  </span>
+                ) : (
+                  <span className="text-red-600 dark:text-red-400 font-medium flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Please address the {validationResult.errors.length} validation issue(s) above
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStage("input")}
+                  className="text-xs text-slate-600 dark:text-slate-300"
+                >
+                  Edit Prompt
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerate}
+                  disabled={isGenerating}
+                  className="text-xs text-amber-600 border-amber-500/30 hover:bg-amber-50"
+                >
+                  <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                  Regenerate
+                </Button>
+
+                <Button
+                  size="sm"
+                  onClick={handleSaveAgent}
+                  disabled={isSaving || !validationResult.valid}
+                  className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      Saving…
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-3.5 w-3.5 mr-1.5" />
+                      Save Agent
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
-
-            <div className="p-4 rounded-xl border border-gray-100 dark:border-neutral-800 text-xs text-gray-600 dark:text-neutral-300">
-              <span className="font-semibold text-gray-900 dark:text-white block mb-1">
-                Opening Message:
-              </span>
-              <p className="font-mono bg-gray-50 dark:bg-neutral-800 p-2.5 rounded-lg text-gray-800 dark:text-neutral-200">
-                "{formData.openingMessage}"
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Bottom Navigation Buttons */}
-      <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-neutral-800">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handlePrev}
-          disabled={currentStep === 1 || isSubmitting}
-        >
-          Previous
-        </Button>
-
-        <div className="flex items-center gap-2.5">
-          {currentStep < 7 ? (
-            <Button variant="primary" size="sm" onClick={handleNext} className="gap-1.5">
-              <span>Next</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handlePublish}
-              disabled={isSubmitting}
-              className="gap-2 min-w-32"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Publishing...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  <span>Publish agent</span>
-                </>
-              )}
-            </Button>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 }

@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
 import { canCreateAndRun } from "@/lib/roles";
-import { AgentRepository } from "@sigulon/database";
-import { generateAgentWithLlm } from "@/lib/agent-generation";
+import { generateAgentWithLlm, generateDeterministicBundle } from "@/lib/agent-generation";
 import { checkOrgRateLimit, logTokenUsage } from "@/lib/rate-limiter";
-import { compileBundleToSystemPrompt } from "@/lib/agent-bundle";
-import { CARTESIA_VOICE_PRESETS } from "@/lib/cartesia";
-import { VOICE_STACK } from "@/lib/voice-config";
+import { validateAgentBundle } from "@/lib/agent-bundle";
 
 export const dynamic = "force-dynamic";
 
@@ -72,69 +69,23 @@ export async function POST(req: NextRequest) {
             },
           });
 
-          await sendEvent({ step: "saving", message: "Saving draft agent…" });
+          await sendEvent({ step: "validating", message: "Validating agent bundle schema…" });
 
-          const bundle = genResult.bundle;
-          const assignedName = bundle.exported_from.employee_name || agentName || "AI Agent";
-          const chosenVoice =
-            CARTESIA_VOICE_PRESETS.find((v) =>
-              gender === "male" ? v.gender === "male" : v.gender === "female"
-            )?.id || CARTESIA_VOICE_PRESETS[0].id;
-
-          const systemPrompt = compileBundleToSystemPrompt(bundle);
-
-          const newAgent = await AgentRepository.create({
-            organizationId: orgId,
-            name: assignedName,
-            status: "draft",
-            description,
-            bundle,
-            config: {
-              identity: {
-                name: assignedName,
-                description: bundle.exported_from.employee_role,
-                language: bundle.exported_from.language,
-              },
-              instructions: {
-                systemPrompt,
-                greeting: bundle.first_response,
-              },
-              voice: {
-                provider: VOICE_STACK.TTS.PROVIDER,
-                voiceId: chosenVoice,
-                model: VOICE_STACK.TTS.MODEL,
-                speed: 1.0,
-              },
-              intelligence: {
-                provider: VOICE_STACK.LLM.PROVIDER,
-                model: VOICE_STACK.LLM.MODEL,
-                temperature: 0.3,
-              },
-              speech: {
-                sttProvider: VOICE_STACK.STT.PROVIDER,
-                sttModel: VOICE_STACK.STT.MODEL,
-                ttsProvider: VOICE_STACK.TTS.PROVIDER,
-                ttsModel: VOICE_STACK.TTS.MODEL,
-              },
-              telephony: {
-                provider: "plivo",
-              },
-              tools: {
-                enabledTools: ["check_availability", "pricing_lookup"],
-                toolConfigs: {},
-              },
-              settings: {
-                interruptionHandling: true,
-                silenceTimeout: 10,
-                maxCallDuration: 600,
-                recordingEnabled: true,
-              },
-            },
-          });
+          let bundle = genResult.bundle;
+          const validation = validateAgentBundle(bundle);
+          if (!validation.valid || !validation.bundle) {
+            bundle = generateDeterministicBundle({
+              description,
+              mode: (mode as "bulk" | "instant") || "bulk",
+              language,
+              agentName,
+            });
+          } else {
+            bundle = validation.bundle;
+          }
 
           logTokenUsage({
             orgId,
-            agentId: newAgent._id.toString(),
             action: "generate-agent",
             model: genResult.model,
             promptTokens: genResult.tokenUsage.promptTokens,
@@ -144,13 +95,8 @@ export async function POST(req: NextRequest) {
 
           await sendEvent({
             step: "complete",
-            message: "Agent generated successfully!",
-            agentId: newAgent._id.toString(),
-            agent: {
-              id: newAgent._id.toString(),
-              name: newAgent.name,
-              bundle,
-            },
+            message: "Agent bundle generated successfully!",
+            bundle,
           });
         } catch (genErr) {
           console.error("[POST /api/agents/generate] Stream error:", genErr);
@@ -181,67 +127,21 @@ export async function POST(req: NextRequest) {
       gender,
     });
 
-    const bundle = genResult.bundle;
-    const assignedName = bundle.exported_from.employee_name || agentName || "AI Agent";
-    const chosenVoice =
-      CARTESIA_VOICE_PRESETS.find((v) =>
-        gender === "male" ? v.gender === "male" : v.gender === "female"
-      )?.id || CARTESIA_VOICE_PRESETS[0].id;
-
-    const systemPrompt = compileBundleToSystemPrompt(bundle);
-
-    const newAgent = await AgentRepository.create({
-      organizationId: orgId,
-      name: assignedName,
-      status: "draft",
-      description,
-      bundle,
-      config: {
-        identity: {
-          name: assignedName,
-          description: bundle.exported_from.employee_role,
-          language: bundle.exported_from.language,
-        },
-        instructions: {
-          systemPrompt,
-          greeting: bundle.first_response,
-        },
-        voice: {
-          provider: VOICE_STACK.TTS.PROVIDER,
-          voiceId: chosenVoice,
-          model: VOICE_STACK.TTS.MODEL,
-          speed: 1.0,
-        },
-        intelligence: {
-          provider: VOICE_STACK.LLM.PROVIDER,
-          model: VOICE_STACK.LLM.MODEL,
-          temperature: 0.3,
-        },
-        speech: {
-          sttProvider: VOICE_STACK.STT.PROVIDER,
-          sttModel: VOICE_STACK.STT.MODEL,
-          ttsProvider: VOICE_STACK.TTS.PROVIDER,
-          ttsModel: VOICE_STACK.TTS.MODEL,
-        },
-        telephony: {
-          provider: "plivo",
-        },
-        tools: {
-          enabledTools: ["check_availability", "pricing_lookup"],
-          toolConfigs: {},
-        },
-        settings: {
-          interruptionHandling: true,
-          silenceTimeout: 10,
-          maxCallDuration: 600,
-          recordingEnabled: true,
-        },
-      },
-    });
+    let bundle = genResult.bundle;
+    const validation = validateAgentBundle(bundle);
+    if (!validation.valid || !validation.bundle) {
+      bundle = generateDeterministicBundle({
+        description,
+        mode: (mode as "bulk" | "instant") || "bulk",
+        language,
+        agentName,
+      });
+    } else {
+      bundle = validation.bundle;
+    }
 
     logTokenUsage({
       orgId,
-      agentId: newAgent._id.toString(),
       action: "generate-agent",
       model: genResult.model,
       promptTokens: genResult.tokenUsage.promptTokens,
@@ -251,12 +151,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      agentId: newAgent._id.toString(),
-      agent: {
-        id: newAgent._id.toString(),
-        name: newAgent.name,
-        bundle,
-      },
+      bundle,
     });
   } catch (err: unknown) {
     console.error("[POST /api/agents/generate] Error:", err);

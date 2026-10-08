@@ -185,13 +185,17 @@ export async function POST(
       }
 
       // Synthesize greeting with Cartesia Sonic
-      const audioBuffer = await cartesia.generateSpeech({
-        transcript: greetingText,
-        voiceId,
-        language,
-      });
-
-      const audioBase64 = Buffer.from(audioBuffer).toString("base64");
+      let audioBase64: string | null = null;
+      try {
+        const audioBuffer = await cartesia.generateSpeech({
+          transcript: greetingText,
+          voiceId,
+          language,
+        });
+        audioBase64 = Buffer.from(audioBuffer).toString("base64");
+      } catch (ttsErr) {
+        console.warn("[test-session] Cartesia TTS error on greeting:", ttsErr);
+      }
 
       // Create persistent Call record in MongoDB for this web test session
       let callId = incomingCallId;
@@ -307,13 +311,17 @@ export async function POST(
     }
 
     // Synthesize real AI voice response with Cartesia Sonic using agent's voice
-    const audioBuffer = await cartesia.generateSpeech({
-      transcript: replyText,
-      voiceId,
-      language,
-    });
-
-    const audioBase64 = Buffer.from(audioBuffer).toString("base64");
+    let audioBase64: string | null = null;
+    try {
+      const audioBuffer = await cartesia.generateSpeech({
+        transcript: replyText,
+        voiceId,
+        language,
+      });
+      audioBase64 = Buffer.from(audioBuffer).toString("base64");
+    } catch (ttsErr) {
+      console.warn("[test-session] Cartesia TTS error on turn:", ttsErr);
+    }
 
     return NextResponse.json({
       replyText,

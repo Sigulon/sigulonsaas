@@ -5,8 +5,7 @@ import {
   AgentRepository,
   PhoneNumberRepository,
 } from "@sigulon/database";
-import { compileBundleToSystemPrompt } from "@/lib/agent-bundle";
-import { repairAgentBundle, validateAgentBundle } from "@sigulon/agent-schema/validation";
+import { compileBundleToSystemPrompt, validateAgentBundle } from "@/lib/agent-bundle";
 import { VOICE_STACK } from "@/lib/voice-config";
 
 export const dynamic = "force-dynamic";
@@ -105,41 +104,53 @@ export async function POST(req: NextRequest) {
     const sttProvider = VOICE_STACK.STT.PROVIDER;
     const ttsProvider = VOICE_STACK.TTS.PROVIDER;
 
-    let bundle = requestedBundle;
+    let bundle: any = null;
     let systemPrompt = requestedSystemPrompt;
     let effectiveLanguage = language;
     let effectiveIntroduction = introduction;
+    let effectiveName = name?.trim() || "";
+    let effectiveVoiceId = voiceId || VOICE_STACK.TTS.DEFAULT_VOICE_ID;
 
-    if (requestedBundle && typeof requestedBundle === "object") {
-      const repaired = repairAgentBundle(requestedBundle as Record<string, unknown>);
-      const validation = validateAgentBundle(repaired);
+    const bundleData = requestedBundle || (body.bundle_version === 2 ? body : null);
+
+    if (bundleData && typeof bundleData === "object") {
+      const validation = validateAgentBundle(bundleData);
       if (!validation.valid || !validation.bundle) {
-        return NextResponse.json({ error: "Invalid generated agent bundle.", details: validation.errors }, { status: 400 });
+        return NextResponse.json(
+          {
+            error: "Agent bundle validation failed.",
+            details: validation.errors,
+          },
+          { status: 400 }
+        );
       }
       bundle = validation.bundle;
       systemPrompt = compileBundleToSystemPrompt(validation.bundle);
       effectiveLanguage = validation.bundle.exported_from.language;
       effectiveIntroduction = validation.bundle.first_response;
+      if (!effectiveName) {
+        effectiveName = validation.bundle.exported_from.employee_name || "AI Agent";
+      }
     }
 
-    if (!name || !voiceId || !systemPrompt) {
+    if (!effectiveName || (!bundle && (!effectiveVoiceId || !systemPrompt))) {
       return NextResponse.json(
-        { error: "Name, voiceId, and systemPrompt are required." },
+        { error: "Name, voiceId, and systemPrompt (or a valid bundle) are required." },
         { status: 400 }
       );
     }
 
     const newAgent = await AgentRepository.create({
       organizationId: orgId,
-      name,
+      name: effectiveName,
       status: agentStatus,
-      description: description || null,
+      description: description || (bundle ? bundle.exported_from.employee_role : null),
       specification,
       bundle,
       config: {
         identity: {
-          name,
-          description: "AI Voice Agent",
+          name: effectiveName,
+          description: bundle ? bundle.exported_from.employee_role : "AI Voice Agent",
           language: effectiveLanguage,
         },
         instructions: {
@@ -148,7 +159,7 @@ export async function POST(req: NextRequest) {
         },
         voice: {
           provider: ttsProvider,
-          voiceId,
+          voiceId: effectiveVoiceId,
           model: VOICE_STACK.TTS.MODEL,
           speed: 1.0,
         },
@@ -182,6 +193,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       {
+        success: true,
         agent: {
           id: newAgent._id.toString(),
           org_id: newAgent.organizationId.toString(),
@@ -192,6 +204,7 @@ export async function POST(req: NextRequest) {
           bundle: newAgent.bundle,
           phone_numbers: [],
         },
+        bundle: newAgent.bundle,
       },
       { status: 201 }
     );
