@@ -67,97 +67,65 @@ export default function InstantLeadPage() {
 
   const handleStartCall = async () => {
     if (!agent) return;
+    if (!phoneNumber) {
+      alert("Please enter a phone number to dial.");
+      return;
+    }
     setCallStatus("connecting");
     setDuration(0);
     setTranscript([]);
 
-    // 1. Ringing state
-    setTimeout(() => {
-      setCallStatus("ringing");
-    }, 1500);
+    try {
+      const res = await fetch("/api/calls", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        body: JSON.stringify({
+          agentId: agent.id,
+          toNumber: phoneNumber,
+          fromNumber: callerId || undefined,
+          metadata: {
+            leadName: leadName || "Lead",
+            source: "instant_lead",
+          },
+        }),
+      });
 
-    // 2. Callee answers -> Talking state
-    setTimeout(() => {
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to dispatch call");
+      }
+
       setCallStatus("talking");
+      const greeting = agent.openingMessage?.replace("{{lead_name}}", leadName || "Sir/Madam") || "నమస్తే అండి";
       setTranscript([
         {
           speaker: agent.name,
-          text: agent.openingMessage?.replace("{{lead_name}}", leadName || "Sir/Madam") || "నమస్తే అండి",
+          text: greeting,
           time: "00:02",
         },
       ]);
-
-      setTimeout(() => {
-        setTranscript((prev) => [
-          ...prev,
-          {
-            speaker: leadName || "Customer",
-            text:
-              agent.language === "Telugu"
-                ? "హలో రవి గారు, నా క్రెటా కారు పాలసీ గురించి కదా! జీరో డెప్ కొటేషన్ ఎంత పడుతుంది?"
-                : "नमस्ते, हाँ मुझे प्रीमियम डिटेल्स चाहिए।",
-            time: "00:09",
-          },
-        ]);
-      }, 3500);
-
-      setTimeout(() => {
-        setTranscript((prev) => [
-          ...prev,
-          {
-            speaker: agent.name,
-            text:
-              agent.language === "Telugu"
-                ? "సార్, జీరో-డెప్ తో కలిపి మీకు ₹18,500 వస్తుంది. మా సీనియర్ ఎగ్జిక్యూటివ్ 4 గంటలకు డీటెయిల్స్ తో కాల్ చేయమంటారా?"
-                : "ज़रूर सर, हमारी टीम 4 बजे आपको पूरी कोटेशन भेजेगी।",
-            time: "00:17",
-          },
-        ]);
-      }, 7000);
-
-      setTimeout(() => {
-        setTranscript((prev) => [
-          ...prev,
-          {
-            speaker: leadName || "Customer",
-            text: "సరే, 4 గంటలకు చేయండి.",
-            time: "00:24",
-          },
-        ]);
-      }, 10000);
-    }, 3500);
+    } catch (err: any) {
+      alert(err.message || "Failed to trigger instant call. Check phone numbers.");
+      setCallStatus("idle");
+    }
   };
 
   const handleEndCall = async () => {
     if (!agent) return;
     setCallStatus("completed");
 
-    // Save lead and call record
+    // Save lead record
     await createLead({
       name: leadName || "Direct Prospect",
       phone: phoneNumber,
       channel: "instant",
       agentId: agent.id,
       agentName: agent.name,
-      status: "qualified",
-      qualificationScore: 92,
+      status: "contacted",
       durationSeconds: duration,
-      extractedVariables: {
-        vehicle: "Hyundai Creta",
-        preferred_time: "4:00 PM",
-      },
-    });
-
-    await recordNewCall({
-      calleeNumber: phoneNumber,
-      callerNumber: callerId,
-      direction: "outbound",
-      type: "instant",
-      agentId: agent.id,
-      agentName: agent.name,
-      durationSeconds: duration,
-      outcome: "qualified",
-      aiSummary: `Instant lead call with ${leadName}. Customer confirmed vehicle and requested quote at 4 PM.`,
     });
   };
 

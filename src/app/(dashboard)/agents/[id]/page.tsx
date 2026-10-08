@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -26,6 +26,7 @@ import {
   Coins,
   Send,
   AlertCircle,
+  Headphones,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +34,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Agent, Call } from "@/lib/types/sigulon";
 import { getAgentById, toggleAgentStatus, updateAgent } from "@/lib/api/agents";
 import { getCalls } from "@/lib/api/calls";
+import { WebVoiceTesterModal } from "@/components/agents/web-voice-tester-modal";
 
 export default function AgentDetailPage({
   params,
@@ -47,12 +49,67 @@ export default function AgentDetailPage({
   >("overview");
   const [isSaved, setIsSaved] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [isWebTesterOpen, setIsWebTesterOpen] = useState(false);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Form editable states
   const [openingMessage, setOpeningMessage] = useState("");
   const [instructions, setInstructions] = useState("");
   const [speed, setSpeed] = useState(1.0);
   const [stability, setStability] = useState(0.8);
+
+  const handleTestPlayVoice = async () => {
+    if (isPlayingAudio) {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.src = "";
+      }
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      setIsPlayingAudio(false);
+      return;
+    }
+
+    if (!agent) return;
+    setIsPlayingAudio(true);
+
+    try {
+      const res = await fetch(`/api/agents/${agent.id}/test-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "init",
+          voiceId: agent.voiceId,
+          language: agent.languageCode || agent.language,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (data.audioBase64) {
+        const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`);
+        currentAudioRef.current = audio;
+        audio.onended = () => setIsPlayingAudio(false);
+        audio.onerror = () => setIsPlayingAudio(false);
+        await audio.play();
+        return;
+      }
+
+      // Speech synthesis fallback
+      const textToSpeak = data.replyText || openingMessage || `Hello, this is ${agent.name}.`;
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        utterance.lang = agent.languageCode || (agent.language === "Telugu" ? "te-IN" : "en-IN");
+        utterance.onend = () => setIsPlayingAudio(false);
+        utterance.onerror = () => setIsPlayingAudio(false);
+        window.speechSynthesis.speak(utterance);
+      } else {
+        setIsPlayingAudio(false);
+      }
+    } catch {
+      setIsPlayingAudio(false);
+    }
+  };
 
   useEffect(() => {
     async function load() {
@@ -135,10 +192,20 @@ export default function AgentDetailPage({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2.5">
+          <Button
+            variant="subtle"
+            size="sm"
+            onClick={() => setIsWebTesterOpen(true)}
+            className="gap-2 font-semibold shadow-2xs"
+          >
+            <Headphones className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <span>Test in Browser</span>
+          </Button>
+
           <Link href={`/talk?agent=${agent.id}`}>
-            <Button variant="subtle" size="sm" className="gap-2">
+            <Button variant="outline" size="sm" className="gap-2">
               <Radio className="w-4 h-4 text-blue-600" />
-              <span>Talk to agent</span>
+              <span>Full Talk Console</span>
             </Button>
           </Link>
 
@@ -473,15 +540,26 @@ export default function AgentDetailPage({
                   Provider: {agent.voiceProvider} · Model ID: {agent.voiceId}
                 </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsPlayingAudio(!isPlayingAudio)}
-                className="gap-2"
-              >
-                {isPlayingAudio ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                <span>{isPlayingAudio ? "Stop" : "Test Play Voice"}</span>
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTestPlayVoice}
+                  className="gap-2"
+                >
+                  {isPlayingAudio ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                  <span>{isPlayingAudio ? "Stop" : "Test Play Voice"}</span>
+                </Button>
+                <Button
+                  variant="subtle"
+                  size="sm"
+                  onClick={() => setIsWebTesterOpen(true)}
+                  className="gap-2"
+                >
+                  <Headphones className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span>Test in Browser</span>
+                </Button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -561,6 +639,23 @@ export default function AgentDetailPage({
           </CardContent>
         </Card>
       )}
+
+      {/* Web Voice Call Simulator Modal */}
+      <WebVoiceTesterModal
+        isOpen={isWebTesterOpen}
+        onClose={() => setIsWebTesterOpen(false)}
+        agent={
+          agent
+            ? ({
+                id: agent.id,
+                name: agent.name,
+                language: agent.languageCode || agent.language,
+                voice_id: agent.voiceId,
+                system_prompt: instructions || agent.instructions,
+              } as any)
+            : null
+        }
+      />
     </div>
   );
 }

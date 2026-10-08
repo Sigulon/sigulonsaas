@@ -19,11 +19,11 @@ export function WebVoiceTesterModal({ isOpen, onClose, agent }: WebVoiceTesterMo
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`Web Voice Call Simulator — ${agent?.name || "Agent"}`}
-      description="Speak directly to your voice agent in your browser without dialing a phone number. Hands-free voice conversation powered by Cartesia Sonic-3."
+      title={`Live Voice Test — ${agent?.name || "Agent"}`}
+      description="Speak directly to your AI voice agent in real-time. Hands-free voice testing powered by Cartesia Sonic-3.6 neural speech."
       maxWidth="2xl"
     >
-      <div className="py-2">
+      <div className="pt-2">
         <BrowserCallPlayground
           agentId={agent?.id || agent?.cartesia_agent_id || ""}
           agentName={agent?.name || "Voice Agent"}
@@ -31,6 +31,7 @@ export function WebVoiceTesterModal({ isOpen, onClose, agent }: WebVoiceTesterMo
           voiceName={voice.name}
           voiceId={agent?.voice_id || voice.id}
           systemPrompt={agent?.system_prompt}
+          embedded={true}
         />
       </div>
     </Modal>

@@ -2,13 +2,13 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import {
   PhoneCall,
   PhoneOff,
   Mic,
+  MicOff,
   Send,
   Volume2,
   Loader2,
@@ -18,6 +18,8 @@ import {
   Radio,
   CheckCircle2,
   ExternalLink,
+  AlertCircle,
+  Globe,
 } from "lucide-react";
 
 export const SUPPORTED_STT_LANGUAGES = [
@@ -49,13 +51,14 @@ export function resolveSpeechLanguageCode(lang?: string): string {
   return "en-IN";
 }
 
-interface BrowserCallPlaygroundProps {
+export interface BrowserCallPlaygroundProps {
   agentId: string;
   agentName: string;
   language: string;
   voiceName: string;
   systemPrompt?: string;
   voiceId?: string;
+  embedded?: boolean;
 }
 
 interface Message {
@@ -71,6 +74,7 @@ export function BrowserCallPlayground({
   voiceName,
   systemPrompt,
   voiceId,
+  embedded = false,
 }: BrowserCallPlaygroundProps) {
   const [selectedLanguage, setSelectedLanguage] = useState(() =>
     resolveSpeechLanguageCode(language)
@@ -87,7 +91,11 @@ export function BrowserCallPlayground({
   const [handsFree, setHandsFree] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSavingCall, setIsSavingCall] = useState(false);
-  const [savedCallResult, setSavedCallResult] = useState<{ callId: string; recordingUrl?: string; turnsCount?: number } | null>(null);
+  const [savedCallResult, setSavedCallResult] = useState<{
+    callId: string;
+    recordingUrl?: string;
+    turnsCount?: number;
+  } | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -95,6 +103,7 @@ export function BrowserCallPlayground({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const micStreamRef = useRef<MediaStream | null>(null);
+  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
   /** Minimal Web Speech API surface */
   interface SpeechRecognitionAlternative {
@@ -131,46 +140,53 @@ export function BrowserCallPlayground({
     setSelectedLanguage(resolveSpeechLanguageCode(language));
   }, [language]);
 
+  // Scroll transcript to bottom smoothly when messages update
+  useEffect(() => {
+    if (transcriptEndRef.current) {
+      transcriptEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, interimTranscript]);
+
   const sampleQuestions = useMemo(() => {
     if (selectedLanguage.startsWith("te")) {
       return [
-        "గజం ధర ఎంత ఉంది అండి?",
+        "నమస్తే అండి, మీ సర్వీస్ వివరాలు ఏమిటి?",
         "బ్యాంక్ లోన్ సదుపాయం ఉందా?",
-        "హైవే నుంచి ఎంత దూరం?",
-        "ఈ వీకెండ్ సైట్ విజిట్ రావచ్చా?",
+        "ఆఫీస్ ఎక్కడ ఉంది?",
+        "ఈ వీకెండ్ మాట్లాడవచ్చా?",
       ];
     }
     if (selectedLanguage.startsWith("hi")) {
       return [
-        "प्लॉट की कीमत क्या है?",
+        "नमस्ते, आपकी सेवाएं क्या हैं?",
         "क्या बैंक लोन सुविधा उपलब्ध है?",
-        "हाईవే से कितनी दूरी पर है?",
-        "क्या हम साइट विजिट कर सकते हैं?",
+        "आपका ऑफिस कहाँ स्थित है?",
+        "क्या हम इस वीकेंड बात कर सकते हैं?",
       ];
     }
     if (selectedLanguage.startsWith("ta")) {
       return [
-        "சதுர கஜத்தின் விலை என்ன?",
+        "வணக்கம், உங்கள் சேவை விவரங்கள் என்ன?",
         "வங்கி கடன் வசதி உள்ளதா?",
-        "இடத்தை பார்க்க வரலாமா?",
+        "உங்கள் அலுவலகம் எங்கே உள்ளது?",
       ];
     }
     if (selectedLanguage.startsWith("kn")) {
       return [
-        "ಪ್ಲಾಟ್ ಬೆಲೆ ಎಷ್ಟು?",
+        "ನಮಸ್ಕಾರ, ನಿಮ್ಮ ಸೇವೆಗಳ ವಿವರವೇನು?",
         "ಬ್ಯಾಂಕ್ ಲೋನ್ ಸೌಲಭ್ಯವಿದೆಯೇ?",
-        "ಸೈಟ್ ವಿಸಿಟ್ ಯಾವಾಗ ಮಾಡಬಹುದು?",
+        "ನಿಮ್ಮ ಕಚೇರಿ ಎಲ್ಲಿದೆ?",
       ];
     }
     return [
-      "What is the price per square yard?",
-      "Is bank loan facility available?",
-      "How far is the project from highway?",
-      "Can we schedule a site visit this weekend?",
+      "Hello, could you explain your services?",
+      "What are the pricing options?",
+      "Where is your office located?",
+      "Can we schedule a call for this weekend?",
     ];
   }, [selectedLanguage]);
 
-  // Stable refs to eliminate stale closure problems in event callbacks
+  // Stable refs for callbacks
   const isInCallRef = useRef(isInCall);
   const isListeningRef = useRef(isListening);
   const handsFreeRef = useRef(handsFree);
@@ -202,7 +218,7 @@ export function BrowserCallPlayground({
     messagesRef.current = messages;
   }, [messages]);
 
-  // Call duration counter
+  // Call duration timer
   useEffect(() => {
     if (isInCall) {
       timerRef.current = setInterval(() => {
@@ -210,7 +226,7 @@ export function BrowserCallPlayground({
       }, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- timer reset on hangup.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCallDuration(0);
     }
     return () => {
@@ -230,7 +246,6 @@ export function BrowserCallPlayground({
   const playAudio = useCallback((base64Data: string) => {
     if (!audioRef.current) return;
     try {
-      // Temporarily stop microphone listening while the agent is speaking through speakers
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
@@ -246,7 +261,7 @@ export function BrowserCallPlayground({
       const playPromise = audioRef.current.play();
       if (playPromise !== undefined) {
         playPromise.catch((err) => {
-          console.warn("Audio playback check:", err);
+          console.warn("Audio playback notice:", err);
           setIsAgentSpeaking(false);
         });
       }
@@ -255,6 +270,52 @@ export function BrowserCallPlayground({
       setIsAgentSpeaking(false);
     }
   }, []);
+
+  const speakAudio = useCallback(
+    (base64Data?: string | null, text?: string) => {
+      if (base64Data) {
+        playAudio(base64Data);
+        return;
+      }
+      if (typeof window !== "undefined" && "speechSynthesis" in window && text) {
+        try {
+          window.speechSynthesis.cancel();
+          if (recognitionRef.current) {
+            try {
+              recognitionRef.current.stop();
+            } catch {}
+            setIsListening(false);
+          }
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = selectedLanguage;
+          setIsAgentSpeaking(true);
+          utterance.onend = () => {
+            setIsAgentSpeaking(false);
+            if (handsFreeRef.current && isInCallRef.current) {
+              setTimeout(() => {
+                if (
+                  handsFreeRef.current &&
+                  isInCallRef.current &&
+                  !isAgentSpeakingRef.current &&
+                  !isProcessingTurnRef.current
+                ) {
+                  try {
+                    recognitionRef.current?.start();
+                    setIsListening(true);
+                  } catch {}
+                }
+              }, 350);
+            }
+          };
+          utterance.onerror = () => setIsAgentSpeaking(false);
+          window.speechSynthesis.speak(utterance);
+        } catch {
+          setIsAgentSpeaking(false);
+        }
+      }
+    },
+    [playAudio, selectedLanguage]
+  );
 
   // Send turn message to agent backend
   const handleSendMessage = useCallback(
@@ -305,8 +366,8 @@ export function BrowserCallPlayground({
           },
         ]);
 
-        if (data.audioBase64) {
-          playAudio(data.audioBase64);
+        if (data.audioBase64 || data.replyText) {
+          speakAudio(data.audioBase64, data.replyText);
         }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to communicate with agent");
@@ -314,7 +375,7 @@ export function BrowserCallPlayground({
         setIsProcessingTurn(false);
       }
     },
-    [agentId, selectedLanguage, playAudio, systemPrompt, voiceId]
+    [agentId, selectedLanguage, speakAudio, systemPrompt, voiceId]
   );
 
   const handleSendMessageRef = useRef(handleSendMessage);
@@ -336,7 +397,7 @@ export function BrowserCallPlayground({
       recognitionRef.current.start();
       setIsListening(true);
     } catch {
-      // recognition might already be active
+      // recognition might already be running
     }
   }, []);
 
@@ -350,7 +411,7 @@ export function BrowserCallPlayground({
     }
   }, []);
 
-  // Initialize Web Speech API with automatic hands-free listener loop
+  // Web Speech API with hands-free loop
   useEffect(() => {
     const speechWindow = window as unknown as WindowWithSpeechRecognition;
     const SpeechRecognition =
@@ -386,7 +447,6 @@ export function BrowserCallPlayground({
         if (finalTranscript && finalTranscript.trim()) {
           setInterimTranscript("");
           setInputText(finalTranscript.trim());
-          // Directly submit speech without needing a button press!
           handleSendMessageRef.current(finalTranscript.trim());
         }
       };
@@ -401,7 +461,6 @@ export function BrowserCallPlayground({
       recognition.onend = () => {
         setIsListening(false);
         setInterimTranscript("");
-        // If in call, hands-free mode is on, and agent is not speaking, automatically keep listening for caller
         if (
           handsFreeRef.current &&
           isInCallRef.current &&
@@ -428,14 +487,13 @@ export function BrowserCallPlayground({
     }
   }, [selectedLanguage]);
 
-  // Audio lifecycle: when agent finishes speaking, automatically resume microphone listening
+  // Audio lifecycle: when agent finishes speaking, automatically resume microphone
   useEffect(() => {
     const audioElement = audioRef.current;
     if (!audioElement) return;
 
     const handleEnded = () => {
       setIsAgentSpeaking(false);
-      // As soon as agent finishes speaking, open the mic for the user to speak!
       if (handsFreeRef.current && isInCallRef.current) {
         setTimeout(() => {
           startListening();
@@ -454,10 +512,10 @@ export function BrowserCallPlayground({
     };
   }, [startListening]);
 
-  // Toggle mic manually if needed
+  // Toggle mic manually
   const toggleMic = async () => {
     if (!recognitionRef.current) {
-      setError("Speech recognition is not supported in this browser. You can use the Quick Talk buttons below.");
+      setError("Speech recognition is not supported in this browser. You can type using the text box below.");
       return;
     }
 
@@ -470,12 +528,12 @@ export function BrowserCallPlayground({
         }
         startListening();
       } catch {
-        setError("Microphone access was denied. Please allow microphone access in your browser settings.");
+        setError("Microphone access was denied. Please allow microphone access in your browser.");
       }
     }
   };
 
-  // Start Call (Dialing into voice session)
+  // Start Call
   const handleStartCall = async () => {
     setConnecting(true);
     setError(null);
@@ -483,7 +541,7 @@ export function BrowserCallPlayground({
     setSavedCallResult(null);
 
     try {
-      // 1. Request mic permission and setup MediaRecorder to capture audio
+      // 1. Microphone & MediaRecorder setup
       let micStream: MediaStream | null = null;
       if (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
         try {
@@ -510,7 +568,7 @@ export function BrowserCallPlayground({
         }
       }
 
-      // 2. Initialize call session in backend (creates Call record in MongoDB)
+      // 2. Initialize call session in backend
       const res = await fetch(`/api/agents/${agentId}/test-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -542,8 +600,8 @@ export function BrowserCallPlayground({
         },
       ]);
 
-      if (data.audioBase64) {
-        playAudio(data.audioBase64);
+      if (data.audioBase64 || data.replyText) {
+        speakAudio(data.audioBase64, data.replyText);
       } else if (handsFree) {
         startListening();
       }
@@ -555,6 +613,11 @@ export function BrowserCallPlayground({
   };
 
   const handleEndCall = async () => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {}
+    }
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = "";
@@ -564,7 +627,6 @@ export function BrowserCallPlayground({
     setIsAgentSpeaking(false);
     setIsProcessingTurn(false);
 
-    // Stop recorder
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== "inactive") {
       recorder.stop();
@@ -580,7 +642,6 @@ export function BrowserCallPlayground({
     setIsSavingCall(true);
 
     try {
-      // Encode recorded audio chunks to base64 for Cloudflare R2 upload
       let audioBase64: string | undefined;
       if (audioChunksRef.current.length > 0) {
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
@@ -615,123 +676,133 @@ export function BrowserCallPlayground({
         });
       }
     } catch (e) {
-      console.warn("End call persistence check:", e);
+      console.warn("End call persistence notice:", e);
     } finally {
       setIsSavingCall(false);
     }
   };
 
+  const containerClasses = embedded
+    ? "space-y-5"
+    : "bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-5 shadow-xs space-y-5";
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950 space-y-6">
-      {/* Hidden audio tag for live streaming playback */}
+    <div className={containerClasses}>
+      {/* Hidden audio tag for streaming neural audio */}
       <audio ref={audioRef} />
 
-      {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-              Live Voice Call Simulator
-            </h3>
-            <Badge
-              variant="outline"
-              className="text-[11px] font-mono text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40"
-            >
-              Hands-Free Call Mode
-            </Badge>
+      {/* Top Header & Session Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-gray-100 dark:border-neutral-800">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/70 border border-blue-100 dark:border-blue-900 text-blue-600 dark:text-blue-400 font-bold text-base flex items-center justify-center shrink-0">
+            {agentName.charAt(0)}
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Talk to <strong>{agentName}</strong> through your microphone just like dialing a real phone number.
-          </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-base text-gray-900 dark:text-white">
+                {agentName}
+              </h3>
+              <Badge variant="blue" className="text-[10px]">
+                Web Voice Call
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500 dark:text-neutral-400">
+              <span className="flex items-center gap-1">
+                <Volume2 className="w-3 h-3 text-blue-500" />
+                <span>{voiceName}</span>
+              </span>
+              <span>·</span>
+              <span className="flex items-center gap-1">
+                <Globe className="w-3 h-3 text-gray-400" />
+                <span>{SUPPORTED_STT_LANGUAGES.find((l) => l.code === selectedLanguage)?.label?.split(" ")[0] || "Telugu"}</span>
+              </span>
+            </div>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           {/* Speech-to-Text Language Selection */}
-          <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs dark:border-slate-800 dark:bg-slate-900">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">STT:</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-gray-200 dark:border-neutral-700 bg-gray-50/50 dark:bg-neutral-800 text-xs">
+            <span className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-wide">
+              STT:
+            </span>
             <select
               value={selectedLanguage}
               onChange={(e) => setSelectedLanguage(e.target.value)}
               disabled={isInCall && isListening}
               suppressHydrationWarning
-              className="bg-transparent text-xs font-semibold text-indigo-600 dark:text-indigo-400 outline-none cursor-pointer"
+              className="bg-transparent text-xs font-semibold text-blue-600 dark:text-blue-400 outline-none cursor-pointer"
               title="Speech Recognition Language"
             >
               {SUPPORTED_STT_LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code} className="text-slate-900 bg-white">
+                <option key={l.code} value={l.code} className="text-gray-900 bg-white dark:bg-neutral-900 dark:text-white">
                   {l.label}
                 </option>
               ))}
             </select>
           </div>
 
-          <div className="text-right">
-            <span className="text-[11px] text-slate-400 block">Voice Persona</span>
-            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1">
-              <Volume2 className="h-3 w-3 text-indigo-500" />
-              {voiceName}
-            </span>
-          </div>
-
           {!isInCall ? (
             <Button
+              variant="primary"
+              size="sm"
               onClick={handleStartCall}
               disabled={connecting}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 text-xs h-9 px-4 shadow-sm"
+              className="gap-2 shadow-xs"
             >
               {connecting ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Connecting Call...</span>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Connecting...</span>
                 </>
               ) : (
                 <>
-                  <PhoneCall className="h-4 w-4" />
+                  <PhoneCall className="w-4 h-4" />
                   <span>Start Web Call</span>
                 </>
               )}
             </Button>
           ) : (
             <div className="flex items-center gap-2">
-              <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5 dark:bg-emerald-950/30 dark:border-emerald-900/50 flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="font-mono text-xs font-bold text-emerald-700 dark:text-emerald-400">
-                  {formatDuration(callDuration)}
-                </span>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-mono text-xs font-semibold">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>{formatDuration(callDuration)}</span>
               </div>
-
               <Button
+                variant="destructive"
+                size="sm"
                 onClick={handleEndCall}
-                className="bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-1.5 text-xs h-9 px-3"
+                className="gap-1.5 h-8 text-xs"
               >
-                <PhoneOff className="h-3.5 w-3.5" />
-                <span>Hang Up</span>
+                <PhoneOff className="w-3.5 h-3.5" />
+                <span>End Call</span>
               </Button>
             </div>
           )}
         </div>
       </div>
 
+      {/* Errors & Alerts */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
-          {error}
+        <div className="p-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
       {isSavingCall && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-950/30 p-3.5 text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
-          <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-          <span>Saving voice recording to Cloudflare R2 and persisting transcription...</span>
+        <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-950/30 text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+          <span>Saving call recording to Cloudflare R2 and persisting transcription log...</span>
         </div>
       )}
 
       {savedCallResult && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/30 p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/30 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>
-              Voice recording uploaded to <strong>Cloudflare R2</strong> (sigulon-storage) & {savedCallResult.turnsCount || "turn"} transcription turns saved to <strong>Call Logs</strong>.
+              Voice recording saved to <strong>Cloudflare R2</strong> and conversation logged to <strong>Call Logs</strong>.
             </span>
           </div>
           <Link
@@ -739,159 +810,172 @@ export function BrowserCallPlayground({
             className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:text-emerald-800 underline dark:text-emerald-400 shrink-0"
           >
             <span>View in Call Logs</span>
-            <ExternalLink className="h-3 w-3" />
+            <ExternalLink className="w-3 h-3" />
           </Link>
         </div>
       )}
 
-      {/* Simulator Visual Display */}
-      <div className="relative rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 p-6 text-white overflow-hidden shadow-inner min-h-[320px] flex flex-col justify-between">
-        {/* Animated Avatar / Soundwave */}
-        <div className="flex items-center justify-center my-auto py-6">
-          {isInCall ? (
-            <div className="flex flex-col items-center gap-3">
-              <div className="relative">
-                <div
-                  className={`h-24 w-24 rounded-full flex items-center justify-center transition-all duration-300 ${
-                    isAgentSpeaking
-                      ? "bg-indigo-600 shadow-[0_0_50px_rgba(99,102,241,0.7)] scale-105"
-                      : isListening
-                      ? "bg-emerald-600 shadow-[0_0_45px_rgba(16,185,129,0.7)] scale-105 ring-4 ring-emerald-400/40"
-                      : isProcessingTurn
-                      ? "bg-amber-600 animate-pulse"
-                      : "bg-slate-800"
-                  }`}
-                >
-                  <Bot className="h-10 w-10 text-white" />
-                </div>
-
-                {isAgentSpeaking && (
-                  <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 bg-indigo-500 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full tracking-wider animate-bounce">
-                    Agent Speaking
-                  </span>
-                )}
-
-                {isListening && (
-                  <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 bg-emerald-500 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full tracking-wider animate-pulse">
-                    Listening to You
-                  </span>
-                )}
-
-                {isProcessingTurn && (
-                  <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 bg-amber-500 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full tracking-wider">
-                    Thinking
-                  </span>
-                )}
-              </div>
-
-              {isAgentSpeaking && (
-                <div className="flex items-center gap-1 mt-3">
-                  <span className="h-4 w-1 bg-indigo-400 rounded-full animate-bounce" />
-                  <span className="h-8 w-1 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.15s]" />
-                  <span className="h-12 w-1 bg-indigo-300 rounded-full animate-bounce [animation-delay:0.3s]" />
-                  <span className="h-7 w-1 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.45s]" />
-                  <span className="h-4 w-1 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.6s]" />
-                </div>
-              )}
-
-              {isListening && (
-                <div className="text-center mt-2 space-y-1.5">
-                  <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5 justify-center">
-                    <Radio className="h-4 w-4 animate-pulse text-emerald-400" />
-                    Listening in {SUPPORTED_STT_LANGUAGES.find((l) => l.code === selectedLanguage)?.label || selectedLanguage}
-                  </span>
-                  {interimTranscript ? (
-                    <div className="inline-block px-3.5 py-1.5 rounded-full bg-emerald-950/80 border border-emerald-400/60 text-emerald-200 text-xs font-medium animate-pulse shadow-md max-w-md mx-auto truncate">
-                      &ldquo;{interimTranscript}&rdquo;
-                    </div>
-                  ) : (
-                    <span className="text-[10px] text-slate-400 block">
-                      Microphone is live. Speak in {SUPPORTED_STT_LANGUAGES.find((l) => l.code === selectedLanguage)?.label?.split(" ")[0] || "Telugu"} naturally.
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {isProcessingTurn && (
-                <div className="text-center mt-2">
-                  <span className="text-xs font-semibold text-amber-300 flex items-center gap-1.5 justify-center">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Agent is generating response...
-                  </span>
-                </div>
+      {/* Modern Calling Monitor & Waveform Visualizer */}
+      <div className="bg-gray-50/80 dark:bg-neutral-800/40 rounded-xl border border-gray-200/80 dark:border-neutral-800 p-6 flex flex-col items-center justify-center text-center relative overflow-hidden transition-all duration-300 min-h-[200px]">
+        {/* Animated Avatar / Call State */}
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative">
+            <div
+              className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                isAgentSpeaking
+                  ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25 ring-4 ring-blue-500/20 scale-105"
+                  : isListening
+                  ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/25 ring-4 ring-emerald-500/20 scale-105"
+                  : isProcessingTurn
+                  ? "bg-amber-500 text-white shadow-lg shadow-amber-500/25 ring-4 ring-amber-500/20 animate-pulse"
+                  : isInCall
+                  ? "bg-gray-800 text-white"
+                  : "bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 text-gray-400 dark:text-neutral-500 shadow-2xs"
+              }`}
+            >
+              {isInCall ? (
+                <Bot className="w-8 h-8" />
+              ) : (
+                <PhoneCall className="w-7 h-7 text-blue-600 dark:text-blue-400" />
               )}
             </div>
+          </div>
+
+          {/* Call Status Badge */}
+          <div>
+            {!isInCall && (
+              <Badge variant="secondary" className="text-xs">
+                Ready to Connect
+              </Badge>
+            )}
+            {isInCall && isAgentSpeaking && (
+              <Badge variant="blue" className="text-xs gap-1.5">
+                <Volume2 className="w-3 h-3 animate-pulse" />
+                <span>Agent Speaking</span>
+              </Badge>
+            )}
+            {isInCall && isListening && !isAgentSpeaking && (
+              <Badge variant="success" className="text-xs gap-1.5">
+                <Mic className="w-3 h-3 animate-pulse" />
+                <span>Listening to Your Voice</span>
+              </Badge>
+            )}
+            {isInCall && isProcessingTurn && (
+              <Badge variant="warning" className="text-xs gap-1.5">
+                <Sparkles className="w-3 h-3 animate-spin" />
+                <span>Thinking...</span>
+              </Badge>
+            )}
+          </div>
+
+          {/* Sleek Dynamic Waveform Bars */}
+          {isInCall ? (
+            <div className="flex items-center justify-center gap-1 mt-2 h-7">
+              {[12, 22, 16, 28, 24, 18, 30, 22, 15, 26, 18, 28, 16, 24, 14, 20].map((h, i) => {
+                const currentHeight = isAgentSpeaking
+                  ? h
+                  : isListening
+                  ? Math.max(6, Math.floor(h * 0.65))
+                  : 4;
+                return (
+                  <span
+                    key={i}
+                    className={`w-1 rounded-full transition-all duration-150 ${
+                      isAgentSpeaking
+                        ? "bg-blue-600 dark:bg-blue-400"
+                        : isListening
+                        ? "bg-emerald-600 dark:bg-emerald-400"
+                        : "bg-gray-300 dark:bg-neutral-700"
+                    }`}
+                    style={{ height: `${currentHeight}px` }}
+                  />
+                );
+              })}
+            </div>
           ) : (
-            <div className="text-center space-y-2">
-              <div className="mx-auto h-16 w-16 rounded-full bg-slate-800 flex items-center justify-center text-slate-400">
-                <PhoneCall className="h-7 w-7" />
-              </div>
-              <h4 className="font-semibold text-sm">Call Simulator Ready</h4>
-              <p className="text-xs text-slate-400 max-w-sm">
-                Click &quot;Start Web Call&quot; to begin a live telephone conversation with your agent directly in the browser.
-              </p>
+            <p className="text-xs text-gray-500 dark:text-neutral-400 mt-1 max-w-sm">
+              Click &quot;Start Web Call&quot; to test natural conversations in your browser with microphone input and neural voice playback.
+            </p>
+          )}
+
+          {/* Real-time speech recognition preview */}
+          {isListening && interimTranscript && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/60 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-medium shadow-xs max-w-md mx-auto truncate mt-1">
+              <Radio className="w-3 h-3 text-emerald-600 shrink-0" />
+              <span>&ldquo;{interimTranscript}&rdquo;</span>
             </div>
           )}
         </div>
-
-        {/* Live Conversation Transcript Feed */}
-        {isInCall && messages.length > 0 && (
-          <div className="max-h-44 overflow-y-auto space-y-2.5 p-3 rounded-xl bg-slate-800/60 border border-slate-700/50 backdrop-blur-xs">
-            {messages.map((m, idx) => (
-              <div
-                key={idx}
-                className={`flex items-start gap-2.5 text-xs ${
-                  m.role === "user" ? "flex-row-reverse" : "flex-row"
-                }`}
-              >
-                <div
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                    m.role === "user" ? "bg-emerald-600 text-white" : "bg-indigo-600 text-white"
-                  }`}
-                >
-                  {m.role === "user" ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
-                </div>
-                <div
-                  className={`max-w-[80%] rounded-xl px-3 py-2 ${
-                    m.role === "user"
-                      ? "bg-emerald-600/90 text-white text-right"
-                      : "bg-slate-700/90 text-slate-100"
-                  }`}
-                >
-                  <p className="leading-relaxed text-xs">{m.content}</p>
-                  <span className="text-[9px] opacity-70 block mt-0.5">{m.time}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* Hands-Free indicator & Quick speech chips */}
+      {/* Live Transcript Stream */}
+      {isInCall && messages.length > 0 && (
+        <div className="rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 space-y-3 max-h-60 overflow-y-auto">
+          {messages.map((m, idx) => (
+            <div
+              key={idx}
+              className={`flex items-start gap-2.5 text-xs ${
+                m.role === "user" ? "flex-row-reverse" : "flex-row"
+              }`}
+            >
+              <div
+                className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
+                  m.role === "user"
+                    ? "bg-gray-100 dark:bg-neutral-800 text-gray-600 border border-gray-200 dark:border-neutral-700"
+                    : "bg-blue-50 dark:bg-blue-950/70 text-blue-600 border border-blue-100 dark:border-blue-900"
+                }`}
+              >
+                {m.role === "user" ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
+              </div>
+              <div
+                className={`max-w-[82%] rounded-xl px-3.5 py-2 text-xs leading-relaxed ${
+                  m.role === "user"
+                    ? "bg-blue-600 text-white rounded-tr-xs"
+                    : "bg-gray-50 dark:bg-neutral-800/80 border border-gray-100 dark:border-neutral-750 text-gray-900 dark:text-neutral-100 rounded-tl-xs shadow-2xs"
+                }`}
+              >
+                <p>{m.content}</p>
+                <span
+                  className={`text-[9px] mt-1 block ${
+                    m.role === "user" ? "text-blue-100 text-right" : "text-gray-400 dark:text-neutral-500"
+                  }`}
+                >
+                  {m.time}
+                </span>
+              </div>
+            </div>
+          ))}
+          <div ref={transcriptEndRef} />
+        </div>
+      )}
+
+      {/* In-Call Controls & Prompts */}
       {isInCall && (
-        <div className="space-y-3">
+        <div className="space-y-3 pt-1">
           {/* Hands-free mode banner */}
-          <div className="flex items-center justify-between rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2 text-xs text-emerald-900 dark:bg-emerald-950/30 dark:border-emerald-900 dark:text-emerald-300">
+          <div className="flex items-center justify-between rounded-lg bg-emerald-50/70 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800/60 px-3 py-1.5 text-xs text-emerald-800 dark:text-emerald-300">
             <span className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
-              <strong>Hands-Free Call Loop Active:</strong> Speak anytime. When you pause, the agent responds automatically.
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>
+                <strong>Hands-free mode active:</strong> Speak naturally. Agent automatically detects pauses.
+              </span>
             </span>
             <label className="flex items-center gap-1.5 text-[11px] font-medium cursor-pointer">
               <input
                 type="checkbox"
                 checked={handsFree}
                 onChange={(e) => setHandsFree(e.target.checked)}
-                className="h-3.5 w-3.5 rounded text-emerald-600 focus:ring-emerald-500"
+                className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500"
               />
               <span>Auto-Listen</span>
             </label>
           </div>
 
-          {/* Quick Ask conversational chips */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
-              <Sparkles className="h-3 w-3 text-amber-500" />
-              Quick Ask:
+          {/* Quick Questions / Topics */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-medium text-gray-500 dark:text-neutral-400 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-blue-600" />
+              Suggested:
             </span>
             {sampleQuestions.map((q, idx) => (
               <button
@@ -900,16 +984,14 @@ export function BrowserCallPlayground({
                 onClick={() => handleSendMessage(q)}
                 disabled={isProcessingTurn || isAgentSpeaking}
                 suppressHydrationWarning
-                className="rounded-full bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 border border-slate-200 px-2.5 py-1 text-[11px] text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 transition-colors disabled:opacity-40 cursor-pointer"
+                className="rounded-lg bg-gray-50 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 border border-gray-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 text-gray-700 px-2.5 py-1 text-xs transition-colors disabled:opacity-40 cursor-pointer"
               >
                 &ldquo;{q}&rdquo;
               </button>
             ))}
           </div>
 
-
-
-          {/* Fallback input form for noisy environments or text users */}
+          {/* Mic Button & Typed Input Form */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -922,36 +1004,49 @@ export function BrowserCallPlayground({
             <Button
               type="button"
               variant="outline"
+              size="sm"
               onClick={toggleMic}
               disabled={isAgentSpeaking || isProcessingTurn}
-              className={`h-10 px-3.5 text-xs flex items-center gap-1.5 ${
+              className={`h-9 px-3 text-xs gap-1.5 ${
                 isListening
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-400 dark:bg-emerald-950/30"
-                  : "border-slate-300 hover:bg-slate-50"
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-400/40 dark:bg-emerald-950/40"
+                  : "text-gray-700 dark:text-neutral-300"
               }`}
               title="Toggle microphone"
             >
-              <Mic className={`h-4 w-4 ${isListening ? "text-emerald-600 animate-pulse" : "text-slate-600"}`} />
-              <span className="font-semibold">{isListening ? "Mic On" : "Mic"}</span>
+              {isListening ? (
+                <>
+                  <Mic className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                  <span className="font-semibold">Mic Live</span>
+                </>
+              ) : (
+                <>
+                  <MicOff className="w-3.5 h-3.5 text-gray-500" />
+                  <span>Mic Muted</span>
+                </>
+              )}
             </Button>
 
-            <Input
+            <input
+              type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Or type what you want to say..."
+              placeholder="Or type a question for the agent..."
               disabled={isProcessingTurn}
-              className="text-xs h-10 flex-1"
+              className="flex-1 h-9 px-3 text-xs rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
 
             <Button
               type="submit"
+              variant="primary"
+              size="sm"
               disabled={!inputText.trim() || isProcessingTurn}
-              className="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs flex items-center gap-1"
+              className="h-9 px-3.5 text-xs gap-1"
             >
               {isProcessingTurn ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <Send className="h-3.5 w-3.5" />
+                <Send className="w-3.5 h-3.5" />
               )}
               <span>Send</span>
             </Button>
