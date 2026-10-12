@@ -3,13 +3,14 @@
 FROM python:3.13-slim AS base
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 WORKDIR /srv/voice-runtime
+ENV PATH="/srv/voice-runtime/.venv/bin:$PATH"
 
 # System deps for audio/VAD wheels (onnxruntime).
 RUN apt-get update \
   && apt-get install -y --no-install-recommends curl libsndfile1 \
   && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml uv.lock* ./
+COPY pyproject.toml uv.lock README.md requirements.txt ./
 RUN if [ -f uv.lock ]; then \
       pip install --no-cache-dir uv && uv sync --frozen --no-dev --no-editable; \
     else \
@@ -19,12 +20,14 @@ RUN if [ -f uv.lock ]; then \
 # requirements.txt remains as the documented pip fallback; uv.lock is the
 # source of truth — regenerate requirements.txt whenever pyproject changes.
 
-COPY agent.py config.py postcall.py billing.py observability.py auth.py language.py latency.py ./
+COPY agent.py config.py postcall.py billing.py observability.py auth.py language.py latency.py lifecycle.py bundle_runner.py voice_stack.py subagents.py ./
 COPY providers/ ./providers/
 COPY tools/ ./tools/
 
 RUN useradd --system --uid 1001 --create-home apprunner
 USER apprunner
+ENV HF_HOME=/home/apprunner/.cache/huggingface
+RUN python agent.py download-files
 # No EXPOSE / HTTP healthcheck: the worker is outbound-only (LiveKit dispatch).
 # Liveness is the Agents SDK registration ("registered agent sigulon-voice-agent").
 CMD ["python", "agent.py", "start"]

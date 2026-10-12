@@ -246,6 +246,7 @@ export class CallRepository {
     format?: string;
     sizeBytes?: number;
     status?: "uploading" | "ready" | "failed";
+    transcriptionStatus?: "pending" | "completed" | "failed";
   }): Promise<IRecording> {
     await connectToDatabase();
     const recording = await RecordingModel.findOneAndUpdate(

@@ -27,6 +27,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Call not found" }, { status: 404 });
     }
 
+    if (call.metadata?.is_web_test || call.provider === "livekit-web") {
+      return NextResponse.json({
+        ok: true,
+        did_reserve: true,
+        insufficient: false,
+        balance: 9999,
+        reserved_credits: 0,
+        available: 9999,
+      });
+    }
+
     const res = await BillingRepository.reserveCallCredits({
       organizationId: call.organizationId,
       callId: call._id,

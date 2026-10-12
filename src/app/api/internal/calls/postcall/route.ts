@@ -28,10 +28,36 @@ export async function POST(req: NextRequest) {
     const outcome = typeof body?.outcome === "string" ? body.outcome : "completed";
     const durationSeconds = Math.max(0, Number(body?.duration_seconds ?? 0) || 0);
 
-    await CallRepository.saveTranscript(call._id, call.organizationId, transcript.map((t: { role?: string; text?: string }) => ({
-      speaker: t.role === "user" ? "user" : "agent",
-      text: String(t.text || ""),
-    }))).catch(() => null);
+    const transcriptSegments = transcript
+      .filter((turn: { role?: unknown; text?: unknown }) => {
+        const role = turn?.role === "assistant" ? "agent" : turn?.role;
+        return (role === "user" || role === "agent")
+          && typeof turn?.text === "string"
+          && turn.text.trim().length > 0;
+      })
+      .map((turn: { role?: unknown; text: string; start_ms?: unknown; end_ms?: unknown }) => {
+        const startMs = Number.isFinite(Number(turn.start_ms)) ? Number(turn.start_ms) : undefined;
+        const endMs = Number.isFinite(Number(turn.end_ms)) ? Number(turn.end_ms) : undefined;
+        const speaker: "user" | "agent" = turn.role === "user" ? "user" : "agent";
+        return {
+          speaker,
+          text: turn.text.trim(),
+          ...(startMs !== undefined ? { startMs } : {}),
+          ...(endMs !== undefined ? { endMs } : {}),
+        };
+      });
+    // Do not hide Mongo failures or replace an existing transcript with an
+    // empty result. The voice worker can legitimately have no committed turns.
+    if (transcriptSegments.length > 0) {
+      await CallRepository.saveTranscript(call._id, call.organizationId, transcriptSegments);
+    }
+    const { RecordingModel } = await import("@sigulon/database");
+    if (transcriptSegments.length > 0) {
+      await RecordingModel.updateOne(
+        { callId: call._id, organizationId: call.organizationId },
+        { $set: { transcriptionStatus: "completed" } }
+      ).exec();
+    }
     const capturedVariables =
       body?.captured_variables && typeof body.captured_variables === "object"
         ? body.captured_variables
@@ -67,7 +93,7 @@ export async function POST(req: NextRequest) {
       console.warn(`[internal/postcall] owner notify failed for ${callId}:`, err);
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, transcript_turns_saved: transcriptSegments.length });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Internal Server Error";
     return NextResponse.json({ error: errorMsg }, { status: 500 });

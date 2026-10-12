@@ -37,6 +37,7 @@ function mapRawCallToCall(c: any): Call {
     outcome,
     costCredits: c.cost_credits ?? 0,
     recordingUrl: c.recording_url || undefined,
+    transcriptionStatus: c.transcription_status || null,
     transcript,
     aiSummary: c.summary || "Call completed successfully.",
     keyTakeaways: c.summary ? [c.summary] : ["Call completed successfully."],

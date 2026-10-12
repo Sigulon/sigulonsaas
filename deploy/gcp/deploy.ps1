@@ -17,7 +17,7 @@ param(
   [switch]$SkipWorker
 )
 
-# Builds the three images, deploys the public Cloud Run services, then creates
+# Builds the web and campaign images, deploys Cloud Run, then creates
 # (or reuses) an Autopilot cluster and installs the KEDA-scaled worker.
 # Secrets are deliberately not created or read by this script. Provision the
 # Secret Manager values and the Kubernetes worker secret first; README.md lists
@@ -56,7 +56,6 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $registryHost = "$Region-docker.pkg.dev"
 $imageRoot = "$registryHost/$ProjectId/$ArtifactRepository"
 $webImage = "$imageRoot/sigulon-web:$Tag"
-$runtimeImage = "$imageRoot/sigulon-runtime:$Tag"
 $workerImage = "$imageRoot/sigulon-worker:$Tag"
 $serviceAccountName = "sigulon-run"
 $serviceAccountEmail = "$serviceAccountName@$ProjectId.iam.gserviceaccount.com"
@@ -82,6 +81,13 @@ $requiredSecretNames = @(
   "sigulon-smtp-user",
   "sigulon-smtp-password",
   "sigulon-email-from"
+  "sigulon-livekit-url"
+  "sigulon-livekit-api-key"
+  "sigulon-livekit-api-secret"
+  "sigulon-livekit-webhook-secret"
+  "sigulon-r2-account-id"
+  "sigulon-r2-access-key-id"
+  "sigulon-r2-secret-access-key"
 )
 
 $workDir = Join-Path ([System.IO.Path]::GetTempPath()) "sigulon-gcp-$PID"
@@ -147,17 +153,16 @@ try {
 
   if (-not $SkipBuild) {
     Invoke-Gcloud @("builds", "submit", $repoRoot, "--tag=$webImage", "--project=$ProjectId")
-    Invoke-Gcloud @("builds", "submit", (Join-Path $repoRoot "voice-runtime"), "--tag=$runtimeImage", "--project=$ProjectId")
     Invoke-Gcloud @("builds", "submit", (Join-Path $repoRoot "services/campaign-worker"), "--tag=$workerImage", "--project=$ProjectId")
   }
 
   # Deploy the web service (control plane + LiveKit webhooks). The voice
-  # worker is outbound-only GKE (no Cloud Run service, no ingress).
+  # room agent is deployed separately to LiveKit Cloud.
   $webManifest = Render-Manifest "cloudrun-web.yaml" @{
     "__PROJECT_ID__" = $ProjectId
     "__WEB_IMAGE__" = $webImage
     "__WEB_URL__" = "https://web.invalid"
-    "__RECORDINGS_BUCKET__" = "sigulon-recordings-prod"
+    "__RECORDINGS_BUCKET__" = "sigulon-storage"
     "__NETWORK__" = $Network
     "__SUBNET__" = $Subnet
   }
@@ -169,7 +174,7 @@ try {
     "__PROJECT_ID__" = $ProjectId
     "__WEB_IMAGE__" = $webImage
     "__WEB_URL__" = $webUrl
-    "__RECORDINGS_BUCKET__" = "sigulon-recordings-prod"
+    "__RECORDINGS_BUCKET__" = "sigulon-storage"
     "__NETWORK__" = $Network
     "__SUBNET__" = $Subnet
   }
@@ -197,23 +202,20 @@ try {
       throw "The Kubernetes secret sigulon-worker-secrets is missing. Create it from worker/secret.example.yaml, outside this repository."
     }
 
-    $values = @{ "__WEB_URL__" = $webUrl; "__WORKER_IMAGE__" = $workerImage; "__VOICE_WORKER_IMAGE__" = $runtimeImage }
+    $values = @{ "__WEB_URL__" = $webUrl; "__WORKER_IMAGE__" = $workerImage }
     $workerConfig = Render-Manifest "worker\configmap.yaml" $values
     $workerDeployment = Render-Manifest "worker\deployment.yaml" $values
-    $voiceConfig = Render-Manifest "voice-worker\configmap.yaml" $values
-    $voiceDeployment = Render-Manifest "voice-worker\deployment.yaml" $values
-    foreach ($manifest in @($workerConfig, $workerDeployment, (Join-Path $PSScriptRoot "worker\pdb.yaml"), (Join-Path $PSScriptRoot "worker\scaledobject.yaml"), $voiceConfig, $voiceDeployment, (Join-Path $PSScriptRoot "voice-worker\scaledobject.yaml"))) {
+    # The LiveKit room agent is deployed separately to LiveKit Cloud.
+    foreach ($manifest in @($workerConfig, $workerDeployment, (Join-Path $PSScriptRoot "worker\pdb.yaml"), (Join-Path $PSScriptRoot "worker\scaledobject.yaml"))) {
       & kubectl apply -f $manifest
       if ($LASTEXITCODE -ne 0) { throw "Could not apply $manifest." }
     }
     & kubectl rollout status deployment/sigulon-campaign-worker --namespace sigulon --timeout=180s
     if ($LASTEXITCODE -ne 0) { throw "Campaign worker did not become ready." }
-    & kubectl rollout status deployment/sigulon-voice-worker --namespace sigulon --timeout=180s
-    if ($LASTEXITCODE -ne 0) { throw "Voice worker did not become ready." }
   }
 
   Write-Host "Sigulon web:     $webUrl"
-  Write-Host "Voice worker:    GKE (sigulon-voice-worker, agent sigulon-voice-agent, CPU autoscaling)"
+  Write-Host "Voice agent: separate LiveKit Cloud deployment; see voice-runtime/DEPLOYMENT.md"
   Write-Host "Campaign worker: GKE Autopilot + KEDA (queue autoscaling enabled)"
 }
 finally {

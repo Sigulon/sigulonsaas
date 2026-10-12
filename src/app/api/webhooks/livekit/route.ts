@@ -39,7 +39,13 @@ async function claimWebhookEvent(provider: string, eventId: string, eventType: s
     });
     return true;
   } catch {
-    return false;
+    // A previous delivery may have failed after the idempotency row was
+    // claimed. Let LiveKit's retry take another pass for failed events.
+    const retry = await WebhookEventModel.updateOne(
+      { provider, eventId, status: "failed" },
+      { $set: { status: "received", payloadHash: hashPayload(payload), receivedAt: new Date(), error: "" } }
+    ).exec().catch(() => null);
+    return Boolean(retry?.modifiedCount);
   }
 }
 
@@ -57,10 +63,11 @@ async function markWebhookEvent(eventId: string, status: "processed" | "failed",
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const authHeader = req.headers.get("Authorization") || "";
-  let event: { event: string; id?: string; room?: { name?: string; metadata?: string }; participant?: { identity?: string }; egressInfo?: { url?: string; fileResults?: { filename?: string; location?: string }[] }; [k: string]: unknown };
+  let event: { event: string; id?: string; room?: { name?: string; metadata?: string }; participant?: { identity?: string }; egressInfo?: { roomName?: string; url?: string; duration?: number; fileResults?: { filename?: string; location?: string; size?: number; duration?: number }[] }; [k: string]: unknown };
   try {
-    const ev = receiver().receive(rawBody, authHeader);
-    event = ev as unknown as typeof event;
+    // livekit-server-sdk verifies asynchronously. Do not cast the Promise to
+    // an event or signature failures will bypass this handler entirely.
+    event = await receiver().receive(rawBody, authHeader) as unknown as typeof event;
   } catch (err) {
     console.error("[livekit/webhook] invalid signature:", err);
     return NextResponse.json({ error: "Invalid webhook signature" }, { status: 403 });
@@ -75,7 +82,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const roomName = event.room?.name || "";
+        const roomName = event.room?.name || event.egressInfo?.roomName || "";
     const roomMetadata = parseDispatchMetadata(event.room?.metadata || "");
     // Fall back to room-name -> call linkage for outbound rooms we created.
     const callIdFromRoom = roomName.startsWith("sigulon-call-")
@@ -224,7 +231,14 @@ export async function POST(req: NextRequest) {
                 llm_model: VOICE_STACK.LLM.MODEL,
                 stt_provider: VOICE_STACK.STT.PROVIDER,
                 enabled_tools: agent.config.tools.enabledTools,
-                settings: agent.config.settings,
+                // Mongo uses camelCase; the canonical runtime contract uses
+                // snake_case. Keep cached and Mongo fallback behavior equal.
+                settings: {
+                  speed: agent.config.voice.speed,
+                  max_call_duration_seconds: agent.config.settings.maxCallDuration,
+                  silence_timeout_seconds: agent.config.settings.silenceTimeout,
+                  record_calls: agent.config.settings.recordingEnabled,
+                },
                 bundle: agent.bundle,
                 created_at: agent.createdAt.toISOString(),
                 updated_at: agent.updatedAt.toISOString(),
@@ -382,28 +396,47 @@ export async function POST(req: NextRequest) {
       case "egress_ended": {
         const info = event.egressInfo || {};
         const file = info.fileResults?.[0];
-        const recordingUrl = file?.location || info.url || "";
+        const objectKey = String(file?.filename || "").replace(/^\/+/, "");
         const call = callIdFromRoom
           ? await CallRepository.findById(callIdFromRoom).catch(() => null)
           : await CallRepository.findByProviderCallId(roomName).catch(() => null);
-        if (call && recordingUrl) {
+        if (call && objectKey) {
+          const { TranscriptModel } = await import("@sigulon/database");
+          const transcript = await TranscriptModel.findOne({
+            callId: call._id,
+            organizationId: call.organizationId,
+          }).lean().exec();
+          await CallRepository.saveRecording({
+            callId: call._id,
+            organizationId: call.organizationId,
+            storageProvider: "r2",
+            bucket: process.env.R2_BUCKET_NAME || "sigulon-storage",
+            objectKey,
+            durationSeconds: Number(file?.duration ?? info.duration ?? 0),
+            sizeBytes: Number(file?.size ?? 0),
+            format: objectKey.toLowerCase().endsWith(".mp3") ? "audio/mpeg" : "audio/ogg",
+            status: "ready",
+            // Transcript persistence can arrive before or after egress. Read
+            // MongoDB at this point so either event order produces the same
+            // final status.
+            transcriptionStatus: transcript?.segments?.length ? "completed" : "pending",
+          });
+          const recordingUrl = file?.location || info.url;
+          if (recordingUrl) {
+            await CallModel.findOneAndUpdate(
+              { _id: call._id, organizationId: call.organizationId },
+              { $set: { "metadata.recordingUrl": recordingUrl } }
+            ).exec();
+          }
+        } else if (call) {
+          // An ended egress without a file is terminal for this recording.
+          // Keep the call visible and make the failure actionable instead of
+          // leaving the dashboard in an infinite pending state.
           const { RecordingModel } = await import("@sigulon/database");
-          await RecordingModel.findOneAndUpdate(
-            { callId: call._id },
-            {
-              $set: {
-                organizationId: call.organizationId,
-                storageProvider: "r2",
-                bucket: process.env.R2_BUCKET_NAME || "sigulon-storage",
-                objectKey: String(file?.filename || recordingUrl),
-                status: "ready",
-              },
-            },
-            { upsert: true }
+          await RecordingModel.updateOne(
+            { callId: call._id, organizationId: call.organizationId },
+            { $set: { status: "failed", transcriptionStatus: "failed" } }
           ).exec().catch(() => null);
-          await CallRepository.transitionState(call._id, call.status, {
-            metadata: { ...(call.metadata || {}), recordingUrl },
-          } as never).catch(() => null);
         }
         break;
       }

@@ -1,0 +1,41 @@
+name: Cloudflare Workers
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: cloudflare-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-web:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run cf:build
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+
+  # LiveKit voice and campaign execution are long-running Python processes;
+  # they are intentionally not placed inside the request-scoped Worker.
+  runtime-images:
+    runs-on: ubuntu-latest
+    if: ${{ vars.BUILD_RUNTIME_IMAGES == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - run: docker build -f voice-runtime/Dockerfile -t sigulon-runtime:ci ./voice-runtime
+      - run: docker build -f services/campaign-worker/Dockerfile -t sigulon-worker:ci ./services/campaign-worker

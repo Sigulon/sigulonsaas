@@ -11,6 +11,7 @@ export interface IRecording extends Document {
   format: string; // "audio/ogg" | "audio/wav" | "audio/mp3"
   sizeBytes?: number;
   status: "uploading" | "ready" | "failed";
+  transcriptionStatus: "pending" | "completed" | "failed";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,6 +58,12 @@ const RecordingSchema = new Schema<IRecording>(
       type: String,
       enum: ["uploading", "ready", "failed"],
       default: "ready",
+      index: true,
+    },
+    transcriptionStatus: {
+      type: String,
+      enum: ["pending", "completed", "failed"],
+      default: "pending",
       index: true,
     },
   },

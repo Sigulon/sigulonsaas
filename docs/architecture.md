@@ -17,8 +17,8 @@ Multi-tenant SaaS for real-time AI voice-calling agents targeting Indian SMBs.
              ▼                    ┌────────┼────────┐
            Redis                  ▼        ▼        ▼
              │                   STT       LLM       TTS
-             ▼                Deepgram   Gemma 4   Cartesia
-       Campaign Queue          nova-3   31B (Inf)  Sonic 3
+             ▼                Deepgram   Gemini    Cartesia
+       Campaign Queue          nova-3   2.5 Flash  Sonic 3.6
              │
              ▼
      services/campaign-worker (LiveKit dispatch + SIP dial)
@@ -41,7 +41,7 @@ sigulon/
 │   ├── agent-schema/                 # Canonical agent schema & validation
 │   ├── shared-types/                 # Canonical call lifecycles, states, and types
 │   └── billing/                      # Pricing math & ledger operations
-├── deploy/                           # Web (Cloud Run) + workers (GKE/KEDA)
+├── deploy/                           # Web (Cloud Run) + campaign queue worker (GKE/KEDA)
 ├── docs/
 ├── .github/
 │   └── workflows/                    # GitHub Actions CI/CD workflows
@@ -62,7 +62,7 @@ sigulon/
    - Control plane `POST /api/webhooks/livekit` (`room_started`, verified with
      `WebhookReceiver` + `WebhookEvent` idempotency) creates the Call and
      reserves credits; the worker's `AgentSession` joins and greets.
-   - Deepgram nova-3 STT → Gemma 4 31B LLM (+ tools) → Cartesia Sonic 3 TTS.
+   - LiveKit Cloud-hosted Python agent: LiveKit Inference Deepgram nova-3 STT → LiveKit Inference Gemini 2.5 Flash (+ tools) → direct Cartesia Sonic 3.6 TTS.
 
 2. **Outbound Calls**:
    - Dashboard `POST /api/calls` (single) or campaign-worker (batch) dials via

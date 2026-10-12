@@ -15,6 +15,8 @@ import logging
 import os
 from typing import Any
 
+from language import resolve_cartesia_language
+
 log = logging.getLogger("voice-runtime.voice_stack")
 
 # Target models
@@ -78,6 +80,8 @@ def build_tts(
     """Build the direct Cartesia TTS (Sonic 3.6). Voice UUID is required."""
     if not (voice_id or "").strip():
         raise ValueError("Cartesia voice_id (UUID) must be explicit from config — never default.")
+    if model not in {"sonic-3.6", "sonic-3.5", "sonic-3"}:
+        raise ValueError(f"Unsupported Cartesia TTS model: {model}")
 
     try:
         from livekit.plugins import cartesia as cartesia_plugin
@@ -85,6 +89,7 @@ def build_tts(
         raise RuntimeError("The 'livekit-plugins-cartesia' package is required.") from exc
 
     clamped = clamp_voice_speed(speed)
+    provider_language = resolve_cartesia_language(language)
     if clamped != speed:
         log.warning("[voice-stack] TTS speed %r clamped to %s", speed, clamped)
 
@@ -94,7 +99,13 @@ def build_tts(
         voice_id[:8],
         clamped,
     )
-    return cartesia_plugin.TTS(model=model, voice=voice_id, speed=clamped)
+    return cartesia_plugin.TTS(
+        model=model,
+        voice=voice_id,
+        language=provider_language,
+        speed=clamped,
+        word_timestamps=provider_language == "en",
+    )
 
 
 __all__ = [

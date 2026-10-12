@@ -1,95 +1,77 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
 import { CARTESIA_VOICE_PRESETS } from "@/lib/cartesia";
+import type { CartesiaVoiceOption } from "@/components/agents/cartesia-voice-picker";
 
 export const dynamic = "force-dynamic";
+
+type CartesiaVoice = {
+  id: string;
+  name: string;
+  description?: string;
+  tagline?: string;
+  gender?: string;
+  language?: string;
+  accents?: Array<{ accent?: string; locale?: string; is_native?: boolean }>;
+};
+
+type CartesiaVoicePage = { data?: CartesiaVoice[]; has_more?: boolean; next_page?: string | null };
 
 export async function GET(req: NextRequest) {
   try {
     const { cartesiaApiKey } = await getOrgContext();
-    const { searchParams } = new URL(req.url);
-    const language = searchParams.get("language") || "hi";
+    const requestedLanguage = new URL(req.url).searchParams.get("language") || "hi-IN";
+    const language = requestedLanguage.replaceAll("_", "-").toLowerCase();
+    const presets = CARTESIA_VOICE_PRESETS.map((voice) => ({
+      id: voice.id,
+      name: voice.name,
+      gender: voice.gender,
+      accent: voice.accent,
+      description: voice.description,
+      preview_url: `/api/voices/${voice.id}/preview?language=${encodeURIComponent(language.split("-")[0])}`,
+    }));
 
-    let apiVoices: Array<{
-      id: string;
-      name: string;
-      description?: string;
-      gender?: string;
-      language?: string;
-      preview_file_url?: string;
-    }> = [];
-
+    const voicesById = new Map<string, CartesiaVoiceOption>(presets.map((voice) => [voice.id, voice]));
     if (cartesiaApiKey) {
       try {
-        const res = await fetch("https://api.cartesia.ai/voices", {
-          headers: {
-            "X-API-Key": cartesiaApiKey,
-            "Cartesia-Version": "2024-06-10",
-          },
-        });
-        if (res.ok) {
-          apiVoices = await res.json();
+        let cursor: string | null = null;
+        for (let pageNumber = 0; pageNumber < 5; pageNumber += 1) {
+          const params = new URLSearchParams({ limit: "100", language, "expand[]": "preview_file_url" });
+          if (cursor) params.set("starting_after", cursor);
+          const response = await fetch(`https://api.cartesia.ai/voices?${params}`, {
+            headers: {
+              Authorization: `Bearer ${cartesiaApiKey}`,
+              "Cartesia-Version": "2026-08-14",
+            },
+            signal: AbortSignal.timeout(8_000),
+            cache: "no-store",
+          });
+          if (!response.ok) throw new Error(`Cartesia voice catalog returned ${response.status}`);
+          const page = await response.json() as CartesiaVoicePage;
+          for (const voice of Array.isArray(page.data) ? page.data : []) {
+            if (!voice.id || !voice.name) continue;
+            const accent = voice.accents?.find((item) => item.locale?.toLowerCase() === language)?.accent
+              || voice.accents?.[0]?.accent
+              || voice.language
+              || "Cartesia";
+            voicesById.set(voice.id, {
+              id: voice.id,
+              name: voice.name,
+              gender: voice.gender || "neutral",
+              accent: accent.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
+              description: voice.description || voice.tagline || "Cartesia voice",
+              preview_url: `/api/voices/${encodeURIComponent(voice.id)}/preview?language=${encodeURIComponent(language.split("-")[0])}`,
+            });
+          }
+          if (!page.has_more || !page.next_page) break;
+          cursor = page.next_page;
         }
-      } catch (e) {
-        console.warn("Failed to fetch voices from Cartesia API:", e);
+      } catch (error) {
+        console.warn("Failed to fetch Cartesia voice catalog; using curated voices:", error);
       }
     }
 
-    // Filter by language if provided or Indian voices
-    const filteredApiVoices = apiVoices.filter((v) => {
-      if (language === "hi" || language === "te") {
-        return (
-          v.language === language ||
-          (v.description && v.description.toLowerCase().includes(language === "hi" ? "hindi" : "telugu")) ||
-          (v.name && v.name.toLowerCase().includes(language === "hi" ? "hindi" : "telugu"))
-        );
-      }
-      return (
-        v.language === language ||
-        (v.name && /india|hindi|tamil|telugu|bengali|kannada|marathi/i.test(v.name)) ||
-        (v.description && /india|hindi|tamil|telugu|bengali|kannada|marathi/i.test(v.description))
-      );
-    });
-
-    // Merge with our curated Indian voice presets
-    const combinedMap = new Map<string, {
-      id: string;
-      name: string;
-      gender: string;
-      accent: string;
-      description: string;
-      preview_url: string;
-    }>();
-
-    // Add preset voices matching or general
-    CARTESIA_VOICE_PRESETS.forEach((preset) => {
-      combinedMap.set(preset.id, {
-        id: preset.id,
-        name: preset.name,
-        gender: preset.gender,
-        accent: preset.accent,
-        description: preset.description,
-        preview_url: `/api/voices/${preset.id}/preview?language=${language}`,
-      });
-    });
-
-    // Add any matching Cartesia API voices not already present
-    filteredApiVoices.slice(0, 15).forEach((v) => {
-      if (!combinedMap.has(v.id)) {
-        combinedMap.set(v.id, {
-          id: v.id,
-          name: v.name,
-          gender: v.gender || "neutral",
-          accent: v.language ? v.language.toUpperCase() : "Indian Multilingual",
-          description: v.description || "High naturalness neural voice model.",
-          preview_url: `/api/voices/${v.id}/preview?language=${language}`,
-        });
-      }
-    });
-
-    return NextResponse.json({
-      voices: Array.from(combinedMap.values()),
-    });
+    return NextResponse.json({ voices: Array.from(voicesById.values()) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Failed to fetch voices";
     return NextResponse.json({ error: errorMsg }, { status: 500 });

@@ -1,70 +1,9 @@
 import type { VoiceAgent } from "./types";
-import type { AgentBundle } from "@sigulon/agent-schema/schema";
+import type { AgentBundle, CanonicalAgentConfig } from "@sigulon/agent-schema/schema";
 import { VOICE_STACK } from "./voice-config";
 
-/**
- * Canonical agent configuration (spec §7) — the single contract shared by
- * the Next.js control plane and the Python voice runtime.
- *
- * The voice runtime caches exactly this shape in Redis under
- * `callConfigCacheKey(callId)` and builds its voice session from it.
- * Any field added here must also be added to the runtime's Pydantic model
- * (`voice-runtime/config.py` → `to_canonical` / `from_canonical`).
- */
-export interface CanonicalAgentConfig {
-  id: string;
-  organization_id: string;
-  /** Filled at call time (pre-warm / inbound webhook), never stored. */
-  call_id?: string;
-  direction?: "inbound" | "outbound";
-
-  identity: {
-    name: string;
-    company: string;
-  };
-
-  instructions: {
-    system_prompt: string;
-    introduction?: string | null;
-    goals: string[];
-    rules: string[];
-  };
-
-  voice: {
-    provider: string;
-    voice_id: string;
-    language: string;
-    speed: number;
-  };
-
-  intelligence: {
-    provider: string;
-    model: string;
-  };
-
-  speech: {
-    stt_provider: string;
-    stt_model?: string | null;
-    tts_provider: string;
-    tts_model: string;
-  };
-
-  telephony: {
-    provider: string;
-    phone_number_id?: string | null;
-  };
-
-  tools: string[];
-
-  settings: {
-    max_call_duration_seconds: number;
-    silence_timeout_seconds: number;
-    record_calls: boolean;
-  };
-
-  /** Source-of-truth conversation bundle consumed by the voice runtime. */
-  bundle?: AgentBundle | null;
-}
+// Compatibility export for callers migrating from the old local definition.
+export type { CanonicalAgentConfig } from "@sigulon/agent-schema/schema";
 
 export interface AgentConfigSettings {
   max_call_duration_seconds?: number;
@@ -107,6 +46,7 @@ export function toCanonicalAgentConfig(
     instructions: {
       system_prompt: agent.system_prompt,
       introduction: agent.introduction ?? null,
+      greeting_first: true,
       goals: settings.goals ?? [],
       rules: settings.rules ?? [],
     },
@@ -127,7 +67,7 @@ export function toCanonicalAgentConfig(
       tts_model: VOICE_STACK.TTS.MODEL,
     },
     telephony: {
-      provider: "plivo",
+      provider: "livekit-sip",
       phone_number_id: null,
     },
     tools: agent.enabled_tools ?? [],

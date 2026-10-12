@@ -1,3 +1,4 @@
+# RETIRED: LiveKit room agents deploy to LiveKit Cloud. Do not apply.
 apiVersion: v1
 kind: ConfigMap
 metadata:

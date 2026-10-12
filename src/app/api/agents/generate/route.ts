@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrgContext } from "@/lib/auth-helpers";
 import { canCreateAndRun } from "@/lib/roles";
-import { generateAgentWithLlm, generateDeterministicBundle } from "@/lib/agent-generation";
+import { generateAgentWithLlm } from "@/lib/agent-generation";
 import { checkOrgRateLimit, logTokenUsage } from "@/lib/rate-limiter";
 import { validateAgentBundle } from "@/lib/agent-bundle";
 
@@ -74,12 +74,7 @@ export async function POST(req: NextRequest) {
           let bundle = genResult.bundle;
           const validation = validateAgentBundle(bundle);
           if (!validation.valid || !validation.bundle) {
-            bundle = generateDeterministicBundle({
-              description,
-              mode: (mode as "bulk" | "instant") || "bulk",
-              language,
-              agentName,
-            });
+            throw new Error("Generated agent bundle failed validation. Please try again.");
           } else {
             bundle = validation.bundle;
           }
@@ -130,12 +125,7 @@ export async function POST(req: NextRequest) {
     let bundle = genResult.bundle;
     const validation = validateAgentBundle(bundle);
     if (!validation.valid || !validation.bundle) {
-      bundle = generateDeterministicBundle({
-        description,
-        mode: (mode as "bulk" | "instant") || "bulk",
-        language,
-        agentName,
-      });
+      throw new Error("Generated agent bundle failed validation. Please try again.");
     } else {
       bundle = validation.bundle;
     }

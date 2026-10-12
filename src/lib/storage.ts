@@ -78,14 +78,13 @@ export async function uploadRecordingToR2(
   const client = getR2Client();
 
   if (!client) {
-    console.warn(
-      "[storage/r2] R2 credentials not set in environment (R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY). Storing record metadata with stream fallback."
-    );
+    const error = "R2 credentials are not configured (R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY).";
+    console.error(`[storage/r2] ${error}`);
     return {
-      success: true,
+      success: false,
       objectKey,
       bucket,
-      url: `/api/recordings/raw/${encodeURIComponent(objectKey)}`,
+      error,
     };
   }
 

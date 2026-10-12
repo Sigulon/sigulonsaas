@@ -120,6 +120,14 @@ export function hashPayload(payload: unknown): string {
 export const LIVEKIT_INFERENCE_GATEWAY = "https://agent-gateway.livekit.cloud/v1";
 export const LIVEKIT_DEFAULT_LLM = "google/gemini-2.5-flash";
 
+export interface LiveKitChatCompletionResult {
+  content: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
 /**
  * Creates an inference access token (JWT) for LiveKit Cloud's hosted AI models.
  */
@@ -158,7 +166,32 @@ export async function generateLiveKitChatCompletion(params: {
   model?: string;
   temperature?: number;
   maxTokens?: number;
-}): Promise<string> {
+  includeUsage?: false;
+  structuredOutput?: boolean;
+  timeoutMs?: number;
+}): Promise<string>;
+export async function generateLiveKitChatCompletion(params: {
+  messages: Array<{ role: string; content: string }>;
+  systemPrompt?: string;
+  language?: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  includeUsage: true;
+  structuredOutput?: boolean;
+  timeoutMs?: number;
+}): Promise<LiveKitChatCompletionResult>;
+export async function generateLiveKitChatCompletion(params: {
+  messages: Array<{ role: string; content: string }>;
+  systemPrompt?: string;
+  language?: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  includeUsage?: boolean;
+  structuredOutput?: boolean;
+  timeoutMs?: number;
+}): Promise<string | LiveKitChatCompletionResult> {
   const {
     messages,
     systemPrompt,
@@ -166,6 +199,9 @@ export async function generateLiveKitChatCompletion(params: {
     model = LIVEKIT_DEFAULT_LLM,
     temperature = 0.7,
     maxTokens = 150,
+    includeUsage = false,
+    structuredOutput = false,
+    timeoutMs = 30000,
   } = params;
 
   const token = createLiveKitInferenceToken();
@@ -206,7 +242,7 @@ export async function generateLiveKitChatCompletion(params: {
   }
 
   const formattedMessages: Array<{ role: string; content: string }> = [];
-  const fullSystemPrompt = systemPrompt
+  const fullSystemPrompt = structuredOutput ? (systemPrompt || "Return only a valid JSON object.") : systemPrompt
     ? `${systemPrompt}\n\n${langGuidance}`
     : langGuidance;
 
@@ -225,6 +261,7 @@ export async function generateLiveKitChatCompletion(params: {
   }
 
   const res = await fetch(`${LIVEKIT_INFERENCE_GATEWAY}/chat/completions`, {
+    signal: AbortSignal.timeout(Number.isFinite(timeoutMs) ? Math.min(60000, Math.max(1, timeoutMs)) : 30000),
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -235,6 +272,7 @@ export async function generateLiveKitChatCompletion(params: {
       messages: formattedMessages,
       temperature,
       max_tokens: maxTokens,
+      ...(structuredOutput ? { response_format: { type: "json_object" } } : {}),
     }),
   });
 
@@ -244,16 +282,33 @@ export async function generateLiveKitChatCompletion(params: {
   }
 
   const data = (await res.json()) as {
+    model?: string;
+    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
     choices?: Array<{ message?: { content?: string } }>;
   };
 
   let reply = data.choices?.[0]?.message?.content?.trim() || "";
   // Strip any accidental markdown formatting or emojis from TTS audio
-  reply = reply
+  if (!structuredOutput) reply = reply
     .replace(/[*_#`~[\]]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 
-  return reply;
-}
+  if (!includeUsage) return reply;
 
+  const promptTokens = Number.isFinite(data.usage?.prompt_tokens) ? Math.max(0, Number(data.usage?.prompt_tokens)) : 0;
+  const completionTokens = Number.isFinite(data.usage?.completion_tokens)
+    ? Math.max(0, Number(data.usage?.completion_tokens))
+    : 0;
+  const totalTokens = Number.isFinite(data.usage?.total_tokens)
+    ? Math.max(0, Number(data.usage?.total_tokens))
+    : promptTokens + completionTokens;
+
+  return {
+    content: reply,
+    model: data.model || model,
+    promptTokens,
+    completionTokens,
+    totalTokens,
+  };
+}

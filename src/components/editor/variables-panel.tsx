@@ -110,14 +110,14 @@ export function VariablesPanel({
             </span>
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Type <code className="text-amber-600 dark:text-amber-400 font-bold font-mono">{"{{"}</code> in any section prompt to insert variables.
+            Type <code className="text-blue-600 dark:text-blue-400 font-bold font-mono">{"{{"}</code> in any section prompt to insert variables.
           </p>
         </div>
 
         <Button
           size="sm"
           onClick={() => setIsAdding(true)}
-          className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs h-8 flex items-center gap-1.5"
+          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs h-8 flex items-center gap-1.5 shadow-xs"
         >
           <Plus className="h-3.5 w-3.5" />
           Add Variable
@@ -180,7 +180,7 @@ export function VariablesPanel({
                   {v.is_phone ? (
                     <Phone className="h-3 w-3 text-emerald-500 shrink-0" />
                   ) : v.is_lead_name ? (
-                    <User className="h-3 w-3 text-amber-500 shrink-0" />
+                    <User className="h-3 w-3 text-blue-600 shrink-0" />
                   ) : (
                     <Hash className="h-3 w-3 text-slate-400 shrink-0" />
                   )}
@@ -245,7 +245,7 @@ export function VariablesPanel({
       {isAdding && (
         <form
           onSubmit={handleAddVariable}
-          className="p-4 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/20 space-y-3"
+          className="p-4 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 space-y-3"
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-900 dark:text-white">Add New Variable</span>
@@ -361,7 +361,7 @@ export function VariablesPanel({
               <Button
                 type="submit"
                 size="sm"
-                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs"
               >
                 Save Variable
               </Button>

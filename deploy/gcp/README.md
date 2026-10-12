@@ -13,24 +13,28 @@ This is the supported Google Cloud topology for Sigulon:
                              │
                        GKE Autopilot
                              │
-                 ┌───────────┴───────────┐
-                 │                       │
-          KEDA (CPU)              KEDA (Redis queue)
-                 │                       │
-        voice-worker replicas    campaign-worker replicas
-        (sigulon-voice-agent)     (LiveKit dispatch+SIP dial)
+                    KEDA (Redis queue)
+                             │
+                  campaign-worker replicas
+                  (LiveKit dispatch+SIP dial)
+
+        LiveKit Cloud hosts the Python sigulon-voice-agent
 
    Telephone: Plivo number → Zentrunk (SIP) → LiveKit Cloud
               inbound trunk → room + dispatch → voice worker
               Outbound: room + dispatch + SIP participant → Plivo → callee
 ```
 
-Cloud Run scales the web application from HTTP traffic. Both workers run on
-GKE: the voice worker (`python agent.py start`, outbound-only, no ingress)
-scales on CPU via KEDA (proxy for LiveKit concurrent dispatch, min 1 so
-inbound SIP dispatch never cold-starts); the campaign worker scales from the
+Cloud Run scales the web application from HTTP traffic. Only the campaign
+queue worker runs on GKE; it scales from the
 Redis list `sigulon:campaign:queue` (1 to 20). GKE Autopilot provisions nodes
 for pending worker Pods.
+
+The Python LiveKit room agent deploys separately to LiveKit Cloud. Follow
+[`voice-runtime/DEPLOYMENT.md`](../../voice-runtime/DEPLOYMENT.md).
+The retired GKE voice manifests are disabled; the deploy script never applies
+them or builds a GKE voice image. Arrange Cloud-to-database/Redis connectivity
+explicitly; this private GCP topology alone does not provide it.
 
 One worker stays alive even without a campaign because the current worker also
 performs retry and stale-job recovery sweeps. This is intentional; setting its
@@ -76,6 +80,9 @@ secret names, never secret data.
 | `sigulon-plivo-auth-id` | `PLIVO_AUTH_ID` (SIP trunking + dual-run only) |
 | `sigulon-plivo-auth-token` | `PLIVO_AUTH_TOKEN` (SIP trunking + dual-run only) |
 | `sigulon-cartesia-api-key` | `CARTESIA_API_KEY` |
+| `sigulon-r2-account-id` | `R2_ACCOUNT_ID` |
+| `sigulon-r2-access-key-id` | `R2_ACCESS_KEY_ID` |
+| `sigulon-r2-secret-access-key` | `R2_SECRET_ACCESS_KEY` |
 | `sigulon-smtp-host` | `SMTP_HOST` |
 | `sigulon-smtp-user` | `SMTP_USER` |
 | `sigulon-smtp-password` | `SMTP_PASSWORD` |
@@ -85,6 +92,11 @@ The deploy script grants its dedicated `sigulon-run` service account Secret
 Accessor at project scope so the generated services can start. For stricter
 production isolation, replace that one project-level grant with Secret Accessor
 bindings on only the secrets in this table.
+
+The web manifest reads call recordings from the `sigulon-storage` Cloudflare R2
+bucket. Configure the three R2 secrets above for the web service and configure
+the same R2 account, bucket, access key, and secret in LiveKit Cloud agent
+secrets so Egress can upload MP3 recordings directly to that bucket.
 
 ## Worker secret
 
@@ -104,8 +116,9 @@ the `KEDA_REDIS_PASSWORD` value to an empty string.
 
 > Legacy manifests `deploy/cloudrun-*.yaml.legacy*` are superseded and must not
 > be applied. The canonical manifests are `deploy/gcp/cloudrun-web.yaml`
-> (Cloud Run web) and `deploy/gcp/voice-worker/` + `deploy/gcp/worker/`
-> (GKE + KEDA workers). Neither worker may be deployed as a Cloud Run
+> (Cloud Run web) and `deploy/gcp/worker/`
+> (GKE + KEDA campaign queue worker). The voice-worker manifests are retired.
+> Neither worker may be deployed as a Cloud Run
 > Service: they are non-HTTP, long-running processes (Agents SDK
 > registration / Redis `BRPOP`).
 

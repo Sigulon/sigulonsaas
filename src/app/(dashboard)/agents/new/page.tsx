@@ -14,7 +14,6 @@ import {
   Save,
   Loader2,
   FileText,
-  Network,
   Bot,
   Globe,
   Briefcase,
@@ -27,7 +26,8 @@ import { AgentBundle, AgentBundleVariable } from "@/lib/agent-bundle/schema";
 import { validateAgentBundle, analyzeBundleVariables } from "@/lib/agent-bundle/validator";
 import { ScriptEditor } from "@/components/editor/script-editor";
 import { VariablesPanel } from "@/components/editor/variables-panel";
-import { FlowGraph } from "@/components/editor/flow-graph";
+import { CartesiaVoicePicker } from "@/components/agents/cartesia-voice-picker";
+import { VOICE_STACK } from "@/lib/voice-config";
 
 interface LanguageOption {
   code: string;
@@ -144,7 +144,7 @@ export default function NewAgentPage() {
 
   // Stage B Script View States
   const [bundle, setBundle] = useState<AgentBundle | null>(null);
-  const [activeTab, setActiveTab] = useState<"script" | "graph">("script");
+  const [voiceId, setVoiceId] = useState<string>(VOICE_STACK.TTS.DEFAULT_VOICE_ID);
   const [highlightedSectionKey, setHighlightedSectionKey] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -207,6 +207,7 @@ export default function NewAgentPage() {
         const decoder = new TextDecoder();
         let buffer = "";
         let finalBundle: AgentBundle | null = null;
+        let streamError: string | null = null;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -220,27 +221,29 @@ export default function NewAgentPage() {
             const trimmed = line.trim();
             if (trimmed.startsWith("data:")) {
               const dataStr = trimmed.slice(5).trim();
+              let event: { step?: string; message?: string; error?: string; bundle?: AgentBundle };
               try {
-                const event = JSON.parse(dataStr);
-                if (event.step) {
-                  setGenerationStep(event.step);
-                }
-                if (event.message) {
-                  setGenerationMessage(event.message);
-                }
-                if (event.step === "complete" && event.bundle) {
-                  finalBundle = event.bundle;
-                }
-                if (event.step === "error") {
-                  throw new Error(event.error || "Generation error occurred");
-                }
+                event = JSON.parse(dataStr);
               } catch (e: any) {
-                if (e.message && e.message !== "Unexpected end of JSON input") {
-                  console.error("Stream parse error:", e);
-                }
+                console.error("Invalid generation stream event:", e);
+                continue;
+              }
+              if (event.step) setGenerationStep(event.step);
+              if (event.message) setGenerationMessage(event.message);
+              if (event.step === "complete" && event.bundle) {
+                finalBundle = event.bundle;
+              }
+              if (event.step === "error") {
+                streamError = event.error || "Generation error occurred";
+                break;
               }
             }
           }
+          if (streamError) break;
+        }
+
+        if (streamError) {
+          throw new Error(streamError);
         }
 
         if (finalBundle) {
@@ -317,6 +320,7 @@ export default function NewAgentPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: bundle.exported_from.employee_name || "AI Agent",
+          voiceId,
           bundle,
         }),
       });
@@ -357,21 +361,16 @@ export default function NewAgentPage() {
               <ArrowLeft className="h-5 w-5" />
             </Link>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-900 dark:text-white text-base">
-                  {stage === "input" ? "Natural Language Agent Builder" : bundle?.exported_from.employee_name || "Agent Script"}
-                </span>
-                <span className="text-[10px] uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                  Bundle v2
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">
-                {stage === "input"
-                  ? "Describe requirements in plain text to generate a telephony agent"
-                  : `Mode: ${bundle?.exported_from.mode === "instant" ? "Instant Lead Calling" : "Bulk Calling"} • ${
-                      LANGUAGES.find((l) => l.code === bundle?.exported_from.language)?.label || bundle?.exported_from.language
-                    }`}
-              </p>
+              <span className="font-bold text-slate-900 dark:text-white text-base">
+                {stage === "input" ? "Create voice agent" : bundle?.exported_from.employee_name || "Agent Script"}
+              </span>
+              {stage === "script" && (
+                <p className="text-xs text-slate-500">
+                  {`Mode: ${bundle?.exported_from.mode === "instant" ? "Instant Lead Calling" : "Bulk Calling"} • ${
+                    LANGUAGES.find((l) => l.code === bundle?.exported_from.language)?.label || bundle?.exported_from.language
+                  }`}
+                </p>
+              )}
             </div>
           </div>
 
@@ -392,7 +391,7 @@ export default function NewAgentPage() {
                 size="sm"
                 onClick={handleGenerate}
                 disabled={isGenerating}
-                className="text-xs h-9 text-amber-600 border-amber-500/30 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                className="text-xs h-9 text-blue-600 border-blue-500/30 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-950/30"
               >
                 {isGenerating ? (
                   <>
@@ -431,22 +430,10 @@ export default function NewAgentPage() {
       </header>
 
       {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-6 pt-6">
-        {/* STAGE A: Natural-Language Input Form */}
+      <main className="max-w-7xl mx-auto px-6 py-6">
+        {/* STAGE A: Input Form */}
         {stage === "input" && (
-          <div className="max-w-3xl mx-auto space-y-6">
-            <div className="text-center space-y-2 pb-2">
-              <div className="inline-flex items-center justify-center p-2 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 mb-1">
-                <Sparkles className="h-7 w-7" />
-              </div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-                What should your voice agent do?
-              </h1>
-              <p className="text-sm text-slate-500 max-w-lg mx-auto">
-                Type what you want your agent to ask, confirm, or pitch. Our Indian telephony architect will create a full Bundle v2 script graph.
-              </p>
-            </div>
-
+          <div className="max-w-3xl mx-auto">
             {/* Stage A Controls Card */}
             <Card className="border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
               <CardContent className="p-6 space-y-6">
@@ -461,17 +448,17 @@ export default function NewAgentPage() {
                       onClick={() => setMode("instant")}
                       className={`flex flex-col text-left p-3.5 rounded-xl border transition-all ${
                         mode === "instant"
-                          ? "border-amber-500 bg-amber-500/5 text-slate-900 dark:text-white shadow-sm ring-1 ring-amber-500/20"
+                          ? "border-blue-600 bg-blue-50/60 dark:bg-blue-950/30 text-slate-900 dark:text-white shadow-xs ring-1 ring-blue-500/30"
                           : "border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700"
                       }`}
                     >
                       <div className="flex items-center justify-between w-full mb-1">
                         <span className="font-bold text-sm flex items-center gap-1.5">
-                          <Zap className="h-4 w-4 text-amber-500" />
+                          <Zap className={`h-4 w-4 ${mode === "instant" ? "text-blue-600 dark:text-blue-400" : "text-slate-400"}`} />
                           Instant Lead Calling
                         </span>
                         {mode === "instant" && (
-                          <div className="h-4 w-4 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center">
+                          <div className="h-4 w-4 rounded-full bg-blue-600 text-white flex items-center justify-center">
                             <Check className="h-2.5 w-2.5 stroke-[3]" />
                           </div>
                         )}
@@ -486,17 +473,17 @@ export default function NewAgentPage() {
                       onClick={() => setMode("bulk")}
                       className={`flex flex-col text-left p-3.5 rounded-xl border transition-all ${
                         mode === "bulk"
-                          ? "border-amber-500 bg-amber-500/5 text-slate-900 dark:text-white shadow-sm ring-1 ring-amber-500/20"
+                          ? "border-blue-600 bg-blue-50/60 dark:bg-blue-950/30 text-slate-900 dark:text-white shadow-xs ring-1 ring-blue-500/30"
                           : "border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700"
                       }`}
                     >
                       <div className="flex items-center justify-between w-full mb-1">
                         <span className="font-bold text-sm flex items-center gap-1.5">
-                          <PhoneCall className="h-4 w-4 text-amber-500" />
+                          <PhoneCall className={`h-4 w-4 ${mode === "bulk" ? "text-blue-600 dark:text-blue-400" : "text-slate-400"}`} />
                           Bulk Calling
                         </span>
                         {mode === "bulk" && (
-                          <div className="h-4 w-4 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center">
+                          <div className="h-4 w-4 rounded-full bg-blue-600 text-white flex items-center justify-center">
                             <Check className="h-2.5 w-2.5 stroke-[3]" />
                           </div>
                         )}
@@ -529,7 +516,7 @@ export default function NewAgentPage() {
                           onClick={() => setLanguage(lang.code)}
                           className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
                             isSelected
-                              ? "bg-amber-500 text-slate-950 shadow-sm"
+                              ? "bg-blue-600 text-white shadow-xs"
                               : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700/60"
                           }`}
                         >
@@ -556,7 +543,7 @@ export default function NewAgentPage() {
                         key={chip.id}
                         type="button"
                         onClick={() => setDescription(chip.prompt)}
-                        className="px-3 py-1 rounded-lg text-xs bg-slate-100 dark:bg-slate-800/80 hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
+                        className="px-3 py-1 rounded-lg text-xs bg-slate-100 dark:bg-slate-800/80 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 dark:hover:bg-blue-950/40 dark:hover:text-blue-400 dark:hover:border-blue-800 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
                       >
                         {chip.label}
                       </button>
@@ -575,7 +562,7 @@ export default function NewAgentPage() {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="e.g. Call every new enquiry from my Instagram ad, ask what they need, and book a visit."
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-4 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/50 resize-y"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-4 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 resize-y"
                   />
                   <p className="text-xs text-slate-400">
                     Include who the caller is, what 2-3 questions to ask, how to confirm next steps, and any key FAQs.
@@ -595,13 +582,13 @@ export default function NewAgentPage() {
 
                 {/* Step Progress Display while Generating */}
                 {isGenerating && (
-                  <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-3">
+                  <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20 space-y-3">
                     <div className="flex items-center justify-between text-xs font-semibold text-slate-900 dark:text-white">
                       <span className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
                         {generationMessage || "Generating Agent Bundle v2…"}
                       </span>
-                      <span className="font-mono text-[10px] uppercase text-amber-600 dark:text-amber-400">
+                      <span className="font-mono text-[10px] uppercase text-blue-600 dark:text-blue-400">
                         {generationStep}
                       </span>
                     </div>
@@ -623,7 +610,7 @@ export default function NewAgentPage() {
                               isDone
                                 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                                 : isCurrent
-                                ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 animate-pulse"
+                                ? "bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30 animate-pulse"
                                 : "bg-slate-100 dark:bg-slate-800/60 text-slate-400"
                             }`}
                           >
@@ -641,7 +628,7 @@ export default function NewAgentPage() {
                     type="button"
                     onClick={handleGenerate}
                     disabled={isGenerating || description.trim().length < 5}
-                    className="w-full h-11 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm rounded-xl shadow-sm flex items-center justify-center gap-2"
+                    className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
                   >
                     {isGenerating ? (
                       <>
@@ -664,6 +651,11 @@ export default function NewAgentPage() {
         {/* STAGE B: Editable Script View */}
         {stage === "script" && bundle && (
           <div className="space-y-6">
+            <CartesiaVoicePicker
+              language={bundle.exported_from.language}
+              value={voiceId}
+              onChange={setVoiceId}
+            />
             {/* Top Info Bar */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
               <div className="flex flex-wrap items-center gap-3">
@@ -683,7 +675,7 @@ export default function NewAgentPage() {
                         },
                       })
                     }
-                    className="px-2.5 py-1 text-sm font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    className="px-2.5 py-1 text-sm font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
 
@@ -713,34 +705,6 @@ export default function NewAgentPage() {
                     <span>{validationResult.errors.length} Schema Issue(s)</span>
                   </div>
                 )}
-
-                {/* View Switcher Tabs */}
-                <div className="flex items-center rounded-lg border border-slate-200 dark:border-slate-800 p-0.5 bg-slate-100 dark:bg-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("script")}
-                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
-                      activeTab === "script"
-                        ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
-                        : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
-                    }`}
-                  >
-                    <FileText className="h-3.5 w-3.5" />
-                    Script
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("graph")}
-                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
-                      activeTab === "graph"
-                        ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
-                        : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
-                    }`}
-                  >
-                    <Network className="h-3.5 w-3.5" />
-                    Flow Graph
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -772,39 +736,23 @@ export default function NewAgentPage() {
               </div>
             )}
 
-            {/* Graph Tab View */}
-            {activeTab === "graph" && (
-              <Card className="border-slate-200 dark:border-slate-800 shadow-sm p-4">
-                <FlowGraph
-                  bundle={bundle}
-                  selectedSectionKey={highlightedSectionKey}
-                  onSelectSection={(key) => {
-                    setHighlightedSectionKey(key);
-                    setActiveTab("script");
-                  }}
-                />
-              </Card>
-            )}
+            {/* Script View */}
+            <div className="space-y-6">
+              {/* Numbered Section Cards via ScriptEditor */}
+              <ScriptEditor
+                bundle={bundle}
+                highlightedSectionKey={highlightedSectionKey}
+                onUpdateBundle={handleUpdateBundle}
+              />
 
-            {/* Script Tab View */}
-            {activeTab === "script" && (
-              <div className="space-y-6">
-                {/* Numbered Section Cards via ScriptEditor */}
-                <ScriptEditor
-                  bundle={bundle}
-                  highlightedSectionKey={highlightedSectionKey}
-                  onUpdateBundle={handleUpdateBundle}
-                />
-
-                {/* Variables Panel */}
-                <VariablesPanel
-                  variables={bundle.variables}
-                  unusedVariables={variableAnalysis.unusedVars}
-                  undefinedVariables={variableAnalysis.undefinedVars}
-                  onChangeVariables={handleUpdateVariables}
-                />
-              </div>
-            )}
+              {/* Variables Panel */}
+              <VariablesPanel
+                variables={bundle.variables}
+                unusedVariables={variableAnalysis.unusedVars}
+                undefinedVariables={variableAnalysis.undefinedVars}
+                onChangeVariables={handleUpdateVariables}
+              />
+            </div>
 
             {/* Bottom Action Footer */}
             <div className="sticky bottom-4 z-30 p-4 rounded-2xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-lg flex items-center justify-between">
@@ -837,7 +785,7 @@ export default function NewAgentPage() {
                   size="sm"
                   onClick={handleGenerate}
                   disabled={isGenerating}
-                  className="text-xs text-amber-600 border-amber-500/30 hover:bg-amber-50"
+                  className="text-xs text-blue-600 border-blue-500/30 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-950/30"
                 >
                   <Sparkles className="h-3.5 w-3.5 mr-1.5" />
                   Regenerate

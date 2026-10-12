@@ -4,12 +4,12 @@
 
 | Component | Deployment input |
 |---|---|
-| Next.js web/control plane | root `Dockerfile`, Cloud Run |
-| Voice worker (`sigulon-voice-agent`) | `voice-runtime/Dockerfile`, GKE + KEDA (CPU/dispatch, outbound-only, no ingress) |
+| Next.js web/control plane | OpenNext + Cloudflare Workers (`wrangler.jsonc`) |
+| Voice worker (`sigulon-voice-agent`) | `voice-runtime/Dockerfile`, LiveKit Cloud Agents only; see `voice-runtime/DEPLOYMENT.md` |
 | Campaign worker | `services/campaign-worker/Dockerfile`, GKE Autopilot + KEDA |
 | Durable data | MongoDB Atlas or a production MongoDB replica set |
 | Queue/cache | Redis (Upstash, Memorystore, or equivalent) |
-| Media/telephone | LiveKit Cloud (SIP trunks, rooms, Egress → GCS); Plivo SIP trunks |
+| Media/telephone | LiveKit Cloud (SIP trunks, rooms, Egress → R2); Plivo SIP trunks |
 
 ## Required configuration
 
@@ -32,26 +32,27 @@ deployment; set `SMTP_SECURE=true` only for implicit-TLS SMTP (normally port
 465). In production, the API returns a delivery error rather than claiming an
 email was sent without this configuration. Local development logs the link.
 
-## Google Cloud production path
+## Cloudflare production path
 
-Use the deployment project in [`deploy/gcp`](../deploy/gcp). It runs the web
-control plane on Cloud Run and both workers (voice + campaign) on GKE
-Autopilot. KEDA scales the campaign worker from the Redis queue depth and
-the voice worker from CPU (proxy for LiveKit concurrent dispatch) — neither
-depends on HTTP RPS.
+Use [`docs/cloudflare-migration.md`](cloudflare-migration.md) for the web
+control plane on Cloudflare Workers. `npm run cf:build` creates the OpenNext
+Worker bundle and `npm run cf:preview` runs it under workerd. The Python voice
+agent deploys exclusively to LiveKit Cloud using
+[`voice-runtime/DEPLOYMENT.md`](../voice-runtime/DEPLOYMENT.md).
 
-Both workers must not be deployed as Cloud Run Services: they are non-HTTP,
-long-running processes (Agents SDK registration / Redis `BRPOP`). Running
-them on GKE with KEDA keeps their existing dispatch and retry semantics.
+The campaign queue worker remains a long-running Redis consumer, not a LiveKit
+room agent. Keep it separate from the Cloudflare Worker and voice agent. The
+legacy GCP manifests under [`deploy/gcp`](../deploy/gcp) are retained as a
+rollback path and are no longer the active CI deployment path.
 
-The voice worker runs `python agent.py start` as a single always-on process
-(min 1, max 20 via KEDA CPU 60%), 2 vCPU / 2 GiB. The web service scales
-from 1 to 20 instances on HTTP traffic. Web uses Direct VPC egress for a
-private Memorystore Redis connection.
+LiveKit Cloud runs the voice image with `python agent.py start`. Its MongoDB,
+Redis, and internal control API endpoints must be reachable from Cloud agents;
+private GCP-only addresses are insufficient. Provision runtime secrets through
+the target platform's secret manager, never image build arguments.
 
-See [`deploy/gcp/README.md`](../deploy/gcp/README.md) for the required Secret
-Manager names, VPC setup, one-command PowerShell deployment, KEDA behavior,
-and Plivo production wiring.
+See [`docs/cloudflare-migration.md`](cloudflare-migration.md) for Cloudflare
+secret setup, preview, CI/CD, cutover, rollback, and compatibility gaps. The
+GCP guide remains available only for rollback operations.
 
 ## Plivo SIP + LiveKit
 
@@ -62,7 +63,7 @@ and Plivo production wiring.
   `<project-sip-subdomain>.sip.livekit.cloud;transport=tcp`.
 - LiveKit webhooks (`/api/webhooks/livekit`, verified with
   `LIVEKIT_WEBHOOK_SECRET`) drive Call lifecycle, billing, and recordings
-  (Egress → GCS). The Plivo `status` webhook stays ONLY for 2-week dual-run
+  (Egress → R2). The Plivo `status` webhook stays ONLY for 2-week dual-run
   reconciliation (`PLIVO_DUAL_RUN`), then is deleted.
 
 ## Local development

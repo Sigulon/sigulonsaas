@@ -48,10 +48,10 @@ export async function connectToDatabase(): Promise<typeof mongoose> {
     const opts: mongoose.ConnectOptions = {
       dbName,
       maxPoolSize: 50,
-      minPoolSize: 5,
-      serverSelectionTimeoutMS: 8000,
+      minPoolSize: 1,
+      serverSelectionTimeoutMS: 15000,
       socketTimeoutMS: 45000,
-      connectTimeoutMS: 10000,
+      connectTimeoutMS: 20000,
       autoIndex: process.env.NODE_ENV !== "production",
       bufferCommands: false,
     };
