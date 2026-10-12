@@ -1,6 +1,6 @@
-import { AgentBundle, AgentBundleSchema } from "./agent-bundle/schema";
-import { validateAgentBundle, repairAgentBundle } from "./agent-bundle/validator";
-import { VOICE_STACK } from "./voice-config";
+import { AgentBundle } from "./agent-bundle/schema";
+import { repairAgentBundle, validateAgentBundle } from "./agent-bundle/validator";
+import { generateLiveKitChatCompletion, LIVEKIT_DEFAULT_LLM } from "./livekit";
 import raviInsuranceExample from "../../docs/examples/ravi-insurance-bulk.json";
 import imranRealEstateExample from "../../docs/examples/imran-realestate-instant.json";
 
@@ -28,7 +28,7 @@ export interface GenerateAgentResult {
   retryCount: number;
 }
 
-const SYSTEM_PROMPT = `You are an expert AI Voice Agent Architect at Sigulon, specializing in telephony voice agents for SMBs in India, particularly Telugu, Hindi, and Indian English callers.
+export const SYSTEM_PROMPT = `You are an expert AI Voice Agent Architect at Sigulon, specializing in telephony voice agents for SMBs in India, particularly Telugu, Hindi, and Indian English callers.
 
 Your task is to take a business description or voice transcript and generate an exact Agent Bundle (bundle_version: 2) as a SINGLE JSON OBJECT.
 
@@ -56,7 +56,7 @@ CRITICAL FORMAT SPECIFICATIONS:
    - prompt: Spoken instruction for this node:
      - 1 question at a time.
      - Warm, short sentences (maximum 2 spoken sentences).
-     - Conversational Telugu-English mix (use 'అండి' for respect; keep common English terms in English like enquiry, site visit, WhatsApp, loan, budget, etc.).
+      - Write spoken greetings and example dialogue in the user's selected language and script. Use Telugu-English mix only when Telugu is selected. JSON keys and mandatory instruction prefixes remain as specified.
      - EVERY section prompt MUST end with an example line starting: "For example you might say: '...'"
 5. variables: Array of variable definitions:
    - key: snake_case (e.g. "phone", "lead_name", "budget", "visit_date_time")
@@ -72,6 +72,7 @@ CRITICAL FORMAT SPECIFICATIONS:
    - RULE: Every {{variable}} placeholder used in first_response or any section prompt MUST exist in variables[].
 
 FEW-SHOT REFERENCE EXAMPLES:
+These examples demonstrate STRUCTURE ONLY. Never copy their business facts, names, locations, prices, offers, or services. Use only facts supplied in the business description. For missing facts, explicitly say the information is unavailable; do not invent answers. The selected language overrides the examples' language.
 
 Example 1: Bulk Motor Insurance Agent (Ravi - Telugu)
 ${JSON.stringify(raviInsuranceExample, null, 2)}
@@ -85,28 +86,150 @@ export async function generateAgentWithLlm(params: GenerateAgentParams): Promise
   const { onProgress } = params;
 
   if (onProgress) await onProgress("understanding", "Understanding your business…");
-  if (onProgress) await onProgress("designing", "Designing the call flow…");
-  if (onProgress) await onProgress("writing", "Writing the script…");
-  if (onProgress) await onProgress("validating", "Validating…");
+  const request = `Generate an Agent Bundle for this business description. Return ONLY the JSON object.
 
-  const bundle = generateDeterministicBundle(params);
-  const validation = validateAgentBundle(bundle);
-  const finalBundle = validation.valid && validation.bundle ? validation.bundle : repairAgentBundle(bundle as unknown as Record<string, unknown>);
+Business description: ${params.description}
+Mode: ${params.mode || "bulk"}
+Language: ${params.language || "te-IN"}
+${params.agentName ? `Agent name: ${params.agentName}` : ""}
+${params.gender ? `Agent gender: ${params.gender}` : ""}`;
 
-  return {
-    bundle: finalBundle,
-    tokenUsage: {
-      promptTokens: 120,
-      completionTokens: 380,
-      totalTokens: 500,
-    },
-    model: VOICE_STACK.LLM.MODEL,
-    retryCount: 0,
-  };
+  let retryCount = 0;
+  let lastUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  let model = LIVEKIT_DEFAULT_LLM;
+  let rawResponse = "";
+  let responseErrors: string[] = [];
+  let lastValidationErrors: string[] = [];
+
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      retryCount = attempt;
+      if (onProgress) await onProgress("designing", attempt ? "Repairing the call flow…" : "Designing the call flow…");
+      if (onProgress) await onProgress("writing", attempt ? "Rewriting invalid JSON…" : "Writing the script…");
+
+      const prompt = attempt === 0
+        ? request
+        : `${request}\n\nYour previous output was invalid. Fix it and return a complete valid bundle. Validation errors: ${
+            responseErrors.join("; ") || "strict JSON parsing failed"
+          }\nPrevious output:\n${rawResponse}`;
+      const response = await generateLiveKitChatCompletion({
+        messages: [{ role: "user", content: prompt }],
+        systemPrompt: SYSTEM_PROMPT,
+        language: params.language,
+        model: LIVEKIT_DEFAULT_LLM,
+        temperature: 0.2,
+        maxTokens: 10000,
+        includeUsage: true,
+        structuredOutput: true,
+      });
+      rawResponse = response.content;
+      model = response.model || LIVEKIT_DEFAULT_LLM;
+      lastUsage = {
+        promptTokens: lastUsage.promptTokens + response.promptTokens,
+        completionTokens: lastUsage.completionTokens + response.completionTokens,
+        totalTokens: lastUsage.totalTokens + response.totalTokens,
+      };
+
+      if (onProgress) await onProgress("validating", "Validating…");
+      let validation: ReturnType<typeof validateAgentBundle> = {
+        valid: false,
+        errors: ["strict JSON parsing failed"],
+      };
+      try {
+        const parsed = parseJsonObject(rawResponse);
+        validation = validateAgentBundle(parsed);
+
+        // The model often gets the conversation content right but misses
+        // mechanical bundle rules (indexes, required system variables, FAQ
+        // section, or a dangling edge). Normalize those deterministically
+        // before spending another inference request on a repair.
+        if (!validation.valid) {
+          try {
+            const source = parsed as Record<string, unknown>;
+            const exportedFrom = source.exported_from && typeof source.exported_from === "object"
+              ? source.exported_from as Record<string, unknown>
+              : {};
+            const normalized = repairAgentBundle({
+              ...source,
+              exported_from: {
+                ...exportedFrom,
+                mode: params.mode || "bulk",
+                language: params.language || "te-IN",
+              },
+            });
+            const repaired = validateAgentBundle(normalized);
+            if (repaired.valid && repaired.bundle) validation = repaired;
+            else lastValidationErrors = repaired.errors;
+          } catch (repairError) {
+            lastValidationErrors = [
+              ...validation.errors,
+              repairError instanceof Error ? `Structural repair failed: ${repairError.message}` : "Structural repair failed",
+            ];
+          }
+        }
+      } catch {
+        // Also accept a fenced or trailing-comma JSON response when the
+        // bundle repair helper can safely parse and normalize its structure.
+        try {
+          const normalized = repairAgentBundle(rawResponse);
+          const repaired = validateAgentBundle({
+            ...normalized,
+            exported_from: {
+              ...normalized.exported_from,
+              mode: params.mode || "bulk",
+              language: params.language || "te-IN",
+            },
+          });
+          if (repaired.valid && repaired.bundle) validation = repaired;
+          else lastValidationErrors = repaired.errors;
+        } catch (repairError) {
+          lastValidationErrors = [
+            repairError instanceof Error ? repairError.message : "Strict JSON parsing failed",
+          ];
+        }
+      }
+      if (
+        validation.valid &&
+        validation.bundle &&
+        validation.bundle.exported_from.language !== (params.language || "te-IN")
+      ) {
+        validation = { valid: false, errors: ["Output language must match selected language"] };
+      }
+      if (validation.valid && validation.bundle) {
+        return { bundle: validation.bundle, tokenUsage: lastUsage, model, retryCount };
+      }
+      responseErrors = lastValidationErrors.length ? lastValidationErrors : validation.errors;
+      lastValidationErrors = [];
+    }
+  } catch {
+    throw new Error("Agent generation failed: LiveKit Inference is unavailable. Check configuration and try again.");
+  }
+
+  const detail = responseErrors.slice(0, 5).join("; ");
+  console.error("[agent-generation] bundle validation failed", {
+    errors: responseErrors,
+    responseLength: rawResponse.length,
+    retryCount,
+  });
+  throw new Error(
+    `Agent generation failed: LiveKit returned an invalid bundle after one repair attempt.${
+      detail ? ` Validation details: ${detail}` : " Please try again."
+    }`
+  );
+}
+
+/** Strictly parse the complete LLM response; markdown and surrounding prose are rejected. */
+function parseJsonObject(raw: string): unknown {
+  const value: unknown = JSON.parse(raw.trim());
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("LiveKit response must be a JSON object");
+  }
+  return value;
 }
 
 /**
- * Creates a valid, tailored bundle when the LLM is unreachable or during test environments.
+ * Creates a deterministic example for tests and explicit template workflows.
+ * Production generation must never silently substitute this for model output.
  */
 export function generateDeterministicBundle(params: GenerateAgentParams): AgentBundle {
   const { description, mode = "bulk", language = "te-IN", agentName } = params;

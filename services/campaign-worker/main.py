@@ -75,7 +75,9 @@ def _clients(cfg):
         cfg.redis_url,
         decode_responses=True,
         socket_connect_timeout=0.5,
-        socket_timeout=1.0,
+        # BRPOP waits for poll_timeout_seconds; the socket must outlive that
+        # server-side block or every idle poll is misreported as a Redis blip.
+        socket_timeout=max(10.0, cfg.poll_timeout_seconds + 2.0),
         retry_on_timeout=False,
     )
     # Do not let a running worker silently drop every job while an external

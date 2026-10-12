@@ -1,6 +1,7 @@
 # Sigulon voice worker (LiveKit Agents 1.x, `python agent.py start`).
 # Outbound-only: no HTTP ingress/service. KEDA (scaledobject.yaml) owns the
 # replica count off CPU + LiveKit concurrent dispatch; do not add an HPA.
+# RETIRED: LiveKit room agents deploy to LiveKit Cloud. Do not apply.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

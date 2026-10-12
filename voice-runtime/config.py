@@ -528,6 +528,10 @@ class ConfigNotFoundError(RuntimeError):
     """Raised when no agent configuration exists for a call ID."""
 
 
+class ConfigIdentityMismatchError(ConfigNotFoundError):
+    """Loaded config belongs to a different LiveKit dispatch identity."""
+
+
 DEFAULT_SYSTEM_PROMPT = "You are a helpful AI voice assistant."
 
 
@@ -719,6 +723,13 @@ def parse_job_metadata(raw: str | dict[str, Any] | None) -> dict[str, Any]:
     campaign_id = data.get("campaign_id") or data.get("campaignId") or ""
     workflow_id = data.get("workflow_id") or data.get("workflowId") or ""
     customer_context = data.get("customer_context") or data.get("customerContext") or {}
+    # Some dispatchers wrap the actual metadata in a metadata/payload object.
+    # Preserve the canonical top-level fields while accepting that shape.
+    if not isinstance(customer_context, dict):
+        customer_context = {}
+    nested_context = customer_context.get("customerContext") or customer_context.get("customer_context")
+    if isinstance(nested_context, dict):
+        customer_context = {**nested_context, **{k: v for k, v in customer_context.items() if k not in ("customerContext", "customer_context")}}
     prompt_injection = data.get("prompt_injection") or data.get("promptInjection") or ""
     voice_id = data.get("voice_id") or data.get("voiceId") or ""
     direction = data.get("direction") or "inbound"
@@ -862,6 +873,8 @@ async def load_agent_config_for_job(
     if call_id:
         try:
             cfg = await load_agent_config(call_id)
+            _validate_dispatch_identity(cfg, org_id, agent_id)
+            cfg = cfg.model_copy(deep=True)
             if room and not cfg.room_name:
                 cfg.room_name = room
             if parsed.get("promptInjection"):
@@ -883,14 +896,25 @@ async def load_agent_config_for_job(
             except Exception:  # noqa: BLE001 - cache write best-effort
                 pass
             return cfg
+        except ConfigIdentityMismatchError:
+            raise
         except ConfigNotFoundError:
             pass
     cfg = await load_agent_config_by_org_agent(
         org_id, agent_id, room_name=room or call_id, direction=direction, metadata_dict=parsed
     )
+    _validate_dispatch_identity(cfg, org_id, agent_id)
     if call_id and not cfg.call_id:
         cfg.call_id = call_id
     return cfg
+
+
+def _validate_dispatch_identity(config: AgentConfig, tenant_id: str, agent_id: str) -> None:
+    """Fail closed if a cache/database result does not match dispatch metadata."""
+    if str(config.tenant_id) != str(tenant_id) or str(config.agent_id) != str(agent_id):
+        raise ConfigIdentityMismatchError(
+            "Loaded agent config identity does not match LiveKit dispatch metadata."
+        )
 
 
 def validate_livekit_env() -> dict[str, bool]:
@@ -904,7 +928,11 @@ def validate_livekit_env() -> dict[str, bool]:
     optional = (
         "LIVEKIT_WEBHOOK_SECRET",
         "LIVEKIT_AGENT_NAME",
-        "GCS_RECORDINGS_BUCKET",
+        "R2_ACCOUNT_ID",
+        "R2_ENDPOINT",
+        "R2_BUCKET_NAME",
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
         "MONGODB_URI",
         "REDIS_URL",
         "INTERNAL_API_BASE_URL",

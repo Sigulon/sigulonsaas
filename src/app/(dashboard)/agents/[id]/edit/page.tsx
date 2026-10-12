@@ -28,6 +28,7 @@ import { ScriptEditor } from "@/components/editor/script-editor";
 import { VariablesPanel } from "@/components/editor/variables-panel";
 import { AiAssistBox } from "@/components/editor/ai-assist-box";
 import { TestCallModal } from "@/components/editor/test-call-modal";
+import { CartesiaVoicePicker } from "@/components/agents/cartesia-voice-picker";
 
 export default function AgentScriptEditorPage({
   params,
@@ -39,6 +40,7 @@ export default function AgentScriptEditorPage({
 
   const [agent, setAgent] = useState<any | null>(null);
   const [bundle, setBundle] = useState<AgentBundle | null>(null);
+  const [voiceId, setVoiceId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -75,6 +77,7 @@ export default function AgentScriptEditorPage({
       const data = await res.json();
       if (data.agent) {
         setAgent(data.agent);
+        setVoiceId(data.agent.voice_id || "");
         let currentBundle = data.agent.bundle as AgentBundle | null;
         if (!currentBundle || typeof currentBundle !== "object") {
           // If no bundle existed, repair / synthesize one
@@ -104,7 +107,7 @@ export default function AgentScriptEditorPage({
 
   // Save draft function
   const saveDraft = useCallback(
-    async (bundleToSave: AgentBundle, showToast = false) => {
+    async (bundleToSave: AgentBundle, showToast = false, voiceIdToSave = voiceId) => {
       setIsSaving(true);
       try {
         const res = await fetch(`/api/agents/${id}`, {
@@ -116,6 +119,7 @@ export default function AgentScriptEditorPage({
             systemPrompt: bundleToSave.sections.map((s) => s.prompt).join("\n\n"),
             introduction: bundleToSave.first_response,
             language: bundleToSave.exported_from.language,
+            voiceId: voiceIdToSave,
           }),
         });
 
@@ -129,8 +133,21 @@ export default function AgentScriptEditorPage({
         setIsSaving(false);
       }
     },
-    [id]
+    [id, voiceId]
   );
+
+  const handleVoiceChange = useCallback((nextVoiceId: string) => {
+    setVoiceId(nextVoiceId);
+    setHasUnsavedChanges(true);
+    if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+    if (bundle) {
+      autosaveTimeoutRef.current = setTimeout(() => {
+        // React state updates are asynchronous. Pass the selected id into
+        // the debounced save instead of closing over the previous voiceId.
+        void saveDraft(bundle, false, nextVoiceId);
+      }, 500);
+    }
+  }, [bundle, saveDraft]);
 
   // Update bundle and trigger debounce autosave
   const handleUpdateBundle = useCallback(
@@ -404,7 +421,7 @@ export default function AgentScriptEditorPage({
             size="sm"
             onClick={handlePublish}
             disabled={isPublishing}
-            className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs h-9 px-4 flex items-center gap-1.5 shadow-sm"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs h-9 px-4 flex items-center gap-1.5 shadow-xs"
           >
             {isPublishing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -422,6 +439,11 @@ export default function AgentScriptEditorPage({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* LEFT PANE: Script Editor & Variables (col-span-7) */}
         <div className="lg:col-span-7 space-y-6">
+          <CartesiaVoicePicker
+            language={bundle.exported_from.language}
+            value={voiceId}
+            onChange={handleVoiceChange}
+          />
           <ScriptEditor
             bundle={bundle}
             highlightedSectionKey={highlightedSectionKey}
@@ -491,7 +513,7 @@ export default function AgentScriptEditorPage({
               size="sm"
               onClick={handlePublish}
               disabled={isPublishing}
-              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs"
             >
               <Rocket className="h-3.5 w-3.5" />
               Publish

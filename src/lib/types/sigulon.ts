@@ -158,6 +158,7 @@ export interface Call {
   outcome: CallOutcome;
   costCredits: number;
   recordingUrl?: string;
+  transcriptionStatus?: "pending" | "completed" | "failed" | null;
   transcript: CallTranscriptLine[];
   aiSummary: string;
   keyTakeaways: string[];

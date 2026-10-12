@@ -24,6 +24,9 @@ export async function POST(req: NextRequest) {
     if (!call) {
       return NextResponse.json({ error: "Call not found" }, { status: 404 });
     }
+    if (call.metadata?.is_web_test || call.provider === "livekit-web") {
+      return NextResponse.json({ ok: true, settled: true, usage: 0, refunded: 0 });
+    }
     const usage = computeUsageCredits(durationSeconds);
     const res = await settleCallCredits(null, call.organizationId.toString(), call._id.toString(), usage);
     return NextResponse.json({ ok: true, settled: res.settled, usage: res.usage, refunded: res.refunded });

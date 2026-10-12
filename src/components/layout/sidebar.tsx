@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -76,29 +75,11 @@ interface SidebarProps {
 
 export function Sidebar({ onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
-  const [userName, setUserName] = useState("User");
-  const [orgName, setOrgName] = useState("Workspace");
-
-  useEffect(() => {
-    async function loadSession() {
-      try {
-        const res = await fetch("/api/auth/session", { cache: "no-store" });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.user?.name) setUserName(data.user.name);
-          if (data.organization?.name) setOrgName(data.organization.name);
-        }
-      } catch (e) {
-        console.error("[sidebar] Error loading session:", e);
-      }
-    }
-    loadSession();
-  }, []);
 
   return (
     <aside
       className={cn(
-        "w-64 h-screen fixed left-0 top-0 z-30 flex flex-col justify-between",
+        "w-64 h-screen fixed left-0 top-0 z-30 flex flex-col",
         "bg-[#f9fafb] dark:bg-[#171717] border-r border-[#e5e7eb] dark:border-[#404040]",
         "select-none transition-colors duration-150"
       )}
@@ -131,7 +112,7 @@ export function Sidebar({ onCloseMobile }: SidebarProps) {
         </div>
 
         {/* Scrollable Navigation */}
-        <div className="px-3 py-4 space-y-6 overflow-y-auto max-h-[calc(100vh-140px)]">
+        <div className="px-3 py-4 space-y-6 overflow-y-auto flex-1">
           {NAV_SECTIONS.map((section) => (
             <div key={section.title} className="space-y-1">
               <div className="px-3 py-1 text-[11px] font-semibold tracking-wider text-gray-400 dark:text-neutral-500 uppercase">
@@ -207,31 +188,6 @@ export function Sidebar({ onCloseMobile }: SidebarProps) {
               <HelpCircle className="w-3.5 h-3.5 text-gray-400" />
               <span>Help & Support</span>
             </a>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom User / Workspace Card */}
-      <div className="p-3 border-t border-[#e5e7eb] dark:border-[#404040] bg-white dark:bg-[#171717]">
-        <div className="flex items-center justify-between p-2 rounded-md hover:bg-gray-50 dark:hover:bg-neutral-800/60 transition-colors">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="relative w-8 h-8 rounded-full bg-blue-600 text-white font-semibold text-xs flex items-center justify-center shrink-0 uppercase">
-              {userName.charAt(0)}
-              <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-neutral-900" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-semibold text-gray-900 dark:text-white truncate">
-                  {userName}
-                </span>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                  ● Online
-                </span>
-              </div>
-              <p className="text-[11px] text-gray-400 dark:text-neutral-500 truncate">
-                {orgName}
-              </p>
-            </div>
           </div>
         </div>
       </div>

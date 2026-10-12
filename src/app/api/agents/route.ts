@@ -7,6 +7,7 @@ import {
 } from "@sigulon/database";
 import { compileBundleToSystemPrompt, validateAgentBundle } from "@/lib/agent-bundle";
 import { VOICE_STACK } from "@/lib/voice-config";
+import type { AgentBundle } from "@sigulon/agent-schema/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -104,12 +105,14 @@ export async function POST(req: NextRequest) {
     const sttProvider = VOICE_STACK.STT.PROVIDER;
     const ttsProvider = VOICE_STACK.TTS.PROVIDER;
 
-    let bundle: any = null;
+    let bundle: AgentBundle | null = null;
     let systemPrompt = requestedSystemPrompt;
     let effectiveLanguage = language;
     let effectiveIntroduction = introduction;
     let effectiveName = name?.trim() || "";
-    let effectiveVoiceId = voiceId || VOICE_STACK.TTS.DEFAULT_VOICE_ID;
+    const effectiveVoiceId = typeof voiceId === "string" && voiceId.trim()
+      ? voiceId.trim()
+      : VOICE_STACK.TTS.DEFAULT_VOICE_ID;
 
     const bundleData = requestedBundle || (body.bundle_version === 2 ? body : null);
 
@@ -133,7 +136,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (!effectiveName || (!bundle && (!effectiveVoiceId || !systemPrompt))) {
+    if (!effectiveName || !effectiveVoiceId || (!bundle && !systemPrompt)) {
       return NextResponse.json(
         { error: "Name, voiceId, and systemPrompt (or a valid bundle) are required." },
         { status: 400 }
@@ -146,7 +149,7 @@ export async function POST(req: NextRequest) {
       status: agentStatus,
       description: description || (bundle ? bundle.exported_from.employee_role : null),
       specification,
-      bundle,
+      bundle: bundle ? (bundle as unknown as Record<string, unknown>) : undefined,
       config: {
         identity: {
           name: effectiveName,
@@ -197,9 +200,10 @@ export async function POST(req: NextRequest) {
         agent: {
           id: newAgent._id.toString(),
           org_id: newAgent.organizationId.toString(),
-          name: newAgent.name,
-          status: newAgent.status,
-          config: newAgent.config,
+           name: newAgent.name,
+           status: newAgent.status,
+           voice_id: newAgent.config.voice.voiceId,
+           config: newAgent.config,
           specification: newAgent.specification,
           bundle: newAgent.bundle,
           phone_numbers: [],

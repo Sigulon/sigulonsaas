@@ -80,7 +80,7 @@ Notes:
 * Barge-in via `allow_interruptions=True`; turn detection `MultilingualModel`.
 * No US-only assumptions: phone numbers are opaque strings; region pins per
   number (`us-east` default, Indian numbers `in-mumbai`).
-* Recordings via LiveKit Egress → GCS; the worker never touches files.
+* Recordings via LiveKit Egress directly to Cloudflare R2; the worker never receives the audio file.
 
 ## Environment variables
 
@@ -88,7 +88,11 @@ Notes:
 |---|---|---|
 | `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | yes | LiveKit Cloud + Inference gateway (LLM & STT) + dispatch |
 | `CARTESIA_API_KEY` | yes | Sonic 3.6 direct TTS (voice UUID always explicit) |
-| `GCS_RECORDINGS_BUCKET` | yes | Egress destination (`sigulon-recordings-<env>`) |
+| `R2_ACCOUNT_ID` | yes for recordings | Cloudflare account ID used to build the S3 endpoint |
+| `R2_ENDPOINT` | no | Cloudflare R2 S3 endpoint; defaults from the account ID |
+| `R2_BUCKET_NAME` | yes for recordings | R2 bucket receiving LiveKit Egress audio files |
+| `R2_ACCESS_KEY_ID` | yes for recordings | R2 S3 access key used by LiveKit Egress |
+| `R2_SECRET_ACCESS_KEY` | yes for recordings | R2 S3 secret used by LiveKit Egress |
 | `REDIS_URL` | yes | Config cache + concurrency counters |
 | `MONGODB_URI` | yes | Source-of-truth agent/call configuration |
 | `INTERNAL_API_SECRET` / `INTERNAL_API_BASE_URL` | yes | Reserve/settle/postcall callbacks |
@@ -112,3 +116,8 @@ registration (`registered agent sigulon-voice-agent`). Metrics via session
 + `[voice-latency]` formats). Deploy: `CMD ["python","agent.py","start"]`,
 single always-on process, KEDA on CPU/concurrent dispatch (see
 `deploy/gcp/voice-worker/`).
+# Deployment target
+
+Deploy this room agent to **LiveKit Cloud** using [DEPLOYMENT.md](DEPLOYMENT.md).
+The campaign queue worker is a separate control-plane service on GKE. Legacy
+GKE voice-worker instructions below, if present, are superseded by that guide.

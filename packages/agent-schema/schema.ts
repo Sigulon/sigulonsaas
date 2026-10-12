@@ -12,6 +12,7 @@ export interface CanonicalAgentConfig {
   instructions: {
     system_prompt: string;
     introduction?: string | null;
+    greeting_first?: boolean;
     goals: string[];
     rules: string[];
   };
@@ -46,8 +47,11 @@ export interface CanonicalAgentConfig {
 
   settings: {
     max_call_duration_seconds: number;
+    max_concurrent_calls?: number;
     silence_timeout_seconds: number;
     record_calls: boolean;
+    on_no_balance?: "message" | "forward_number";
+    forward_number?: string | null;
   };
 
   /** Serialized bundle v2 travels with pre-warmed runtime configurations. */

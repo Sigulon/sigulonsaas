@@ -5,7 +5,7 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { AgentBundle } from "@/lib/agent-bundle/schema";
 import { BrowserCallPlayground } from "@/components/builder/browser-call-playground";
-import { Headphones, PhoneCall } from "lucide-react";
+import { PhoneCall } from "lucide-react";
 
 interface TestCallModalProps {
   isOpen: boolean;
@@ -109,9 +109,8 @@ export function TestCallModal({ isOpen, onClose, agentId, bundle }: TestCallModa
               agentId={agentId}
               agentName={bundle.exported_from.employee_name}
               language={bundle.exported_from.language}
-              voiceName="Ramya (Telugu - Warm)"
-              voiceId="cf061d8b-a752-4865-81a2-57570a6e0565"
-              systemPrompt={bundle.sections.map((s) => s.prompt).join("\n\n")}
+              voiceName="Configured agent voice"
+              bundle={{ ...bundle, first_response: resolvedGreeting || bundle.first_response }}
               embedded={true}
             />
 

@@ -5,8 +5,6 @@ import {
   PhoneCall,
   Search,
   Filter,
-  Play,
-  Pause,
   Download,
   X,
   Clock,
@@ -34,7 +32,6 @@ export default function CallHistoryPage() {
 
   // Selected Call Sheet
   const [selectedCall, setSelectedCall] = useState<Call | null>(null);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
   useEffect(() => {
     async function loadAgents() {
@@ -65,6 +62,26 @@ export default function CallHistoryPage() {
 
   useEffect(() => {
     loadData();
+  }, [outcomeFilter, directionFilter, selectedAgentId, search]);
+
+  // Post-call transcript and recording callbacks arrive asynchronously after
+  // a call ends. Refresh the visible history so an open call detail updates.
+  useEffect(() => {
+    const timer = window.setInterval(async () => {
+      const updated = await getCalls({
+        outcome: outcomeFilter,
+        direction: directionFilter,
+        agentId: selectedAgentId,
+        search,
+      });
+      setCalls(updated);
+      setSelectedCall((current) => {
+        if (!current) return null;
+        const latest = updated.find((call) => call.id === current.id);
+        return latest ? { ...latest, recordingUrl: current.recordingUrl || latest.recordingUrl } : current;
+      });
+    }, 12_000);
+    return () => window.clearInterval(timer);
   }, [outcomeFilter, directionFilter, selectedAgentId, search]);
 
   return (
@@ -233,26 +250,23 @@ export default function CallHistoryPage() {
 
             <div className="p-5 space-y-5 overflow-y-auto max-h-[calc(100vh-140px)] text-xs">
               {/* Audio Player Bar */}
-              <div className="p-4 rounded-xl bg-gray-50 dark:bg-neutral-800/60 border border-gray-100 dark:border-neutral-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setIsPlayingAudio(!isPlayingAudio)}
-                    className="w-9 h-9 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-colors shadow-xs"
-                  >
-                    {isPlayingAudio ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-                  </button>
+              <div className="p-4 rounded-xl bg-gray-50 dark:bg-neutral-800/60 border border-gray-100 dark:border-neutral-800 space-y-2">
+                <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-semibold text-gray-900 dark:text-white">
-                      Recording Playback
-                    </div>
+                    <div className="font-semibold text-gray-900 dark:text-white">Recording Playback</div>
                     <div className="text-[11px] text-gray-400 font-mono">
                       {Math.floor(selectedCall.durationSeconds / 60)}m {selectedCall.durationSeconds % 60}s · Two-way audio
                     </div>
                   </div>
+                  <Badge variant="success" className="capitalize">{selectedCall.outcome}</Badge>
                 </div>
-                <Badge variant="success" className="capitalize">
-                  {selectedCall.outcome}
-                </Badge>
+                {selectedCall.recordingUrl ? (
+                  <audio controls preload="none" src={selectedCall.recordingUrl} className="w-full">
+                    Your browser does not support audio playback.
+                  </audio>
+                ) : (
+                  <p className="text-xs text-gray-500">No recording is available for this call.</p>
+                )}
               </div>
 
               {/* AI Summary */}
@@ -317,7 +331,15 @@ export default function CallHistoryPage() {
                   Full Conversation Transcript
                 </h4>
                 <div className="space-y-2.5 bg-gray-50/40 dark:bg-neutral-950 p-3.5 rounded-xl border border-gray-100 dark:border-neutral-800">
-                  {selectedCall.transcript.map((line, idx) => (
+                  {selectedCall.transcript.length === 0 ? (
+                    <p className="text-gray-500">
+                      {selectedCall.transcriptionStatus === "pending"
+                        ? "Transcript processing will start when the call recording is ready."
+                        : selectedCall.transcriptionStatus === "failed"
+                          ? "Transcript processing failed for this recording."
+                          : "No transcript turns were recorded for this call."}
+                    </p>
+                  ) : selectedCall.transcript.map((line, idx) => (
                     <div key={idx} className="space-y-0.5">
                       <div className="flex items-center gap-2 font-mono text-[10px] text-gray-400">
                         <span className="font-bold text-blue-600 uppercase">

@@ -7,11 +7,19 @@
   ],
   "scripts": {
     "dev": "next dev",
+    "dev:all": "powershell -ExecutionPolicy Bypass -File scripts/start-dev.ps1",
+    "dev:voice": "powershell -ExecutionPolicy Bypass -Command \"cd voice-runtime; .\\.venv\\Scripts\\python.exe agent.py dev\"",
+    "dev:campaign": "powershell -ExecutionPolicy Bypass -Command \"cd services/campaign-worker; ..\\..\\voice-runtime\\.venv\\Scripts\\python.exe main.py\"",
     "build": "next build",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf:upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "start": "next start",
     "lint": "eslint .",
     "lint:py": "echo 'TODO: add ruff/mypy for voice-runtime and services/campaign-worker' && exit 0",
-    "test:unit": "vite-node scripts/test-bundle.ts",
+    "test:unit": "vite-node scripts/test-bundle.ts && vitest run --config scripts/browser-session.vitest.config.ts && vitest run --config scripts/transcribe.vitest.config.ts",
     "db:init": "vite-node scripts/create-tables.ts",
     "db:seed": "vite-node scripts/seed-mongodb.ts",
     "db:migrate:voice-stack": "vite-node scripts/migrate-to-consolidated-voice-stack.ts",
@@ -24,11 +32,12 @@
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "jose": "^6.2.12",
+    "livekit-client": "^2.22.4",
     "livekit-server-sdk": "^2.0.0",
     "lucide-react": "^1.37.0",
     "mongodb": "^7.6.0",
     "mongoose": "^9.10.0",
-    "next": "16.3.3",
+    "next": "^16.3.8",
     "nodemailer": "^10.0.9",
     "papaparse": "^5.7.0",
     "react": "19.2.8",
@@ -39,6 +48,7 @@
     "zod": "^4.6.2"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.10",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
@@ -47,8 +57,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.3",
+    "eslint-config-next": "^16.3.8",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7",
+    "wrangler": "^4.149.0"
   }
 }

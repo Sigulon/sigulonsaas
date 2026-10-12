@@ -10,6 +10,7 @@ import {
 } from "@sigulon/database";
 import { normalizePhone } from "@/lib/phone";
 import { LIVEKIT_AGENT_NAME, buildDispatchMetadata, roomNameForCall } from "@/lib/livekit";
+import { generateDownloadUrlAsync } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,11 @@ type PopulatedContact = {
 };
 
 type PopulatedRecording = {
+  storageProvider?: string;
+  bucket?: string;
   objectKey?: string;
+  status?: string;
+  transcriptionStatus?: "pending" | "completed" | "failed";
 };
 
 type PopulatedTranscript = {
@@ -58,7 +63,19 @@ export async function GET(req: NextRequest) {
       offset,
     });
 
-    const formattedCalls = calls.map((c) => ({
+    const formattedCalls = await Promise.all(calls.map(async (c) => {
+      const recording = c.recordingId as unknown as PopulatedRecording | undefined;
+      const recordingUrl = recording?.objectKey
+        ? recording.storageProvider === "plivo"
+          ? recording.objectKey
+          : await generateDownloadUrlAsync({
+              provider: recording.storageProvider || "r2",
+              bucket: recording.bucket || process.env.R2_BUCKET_NAME || "sigulon-storage",
+              objectKey: recording.objectKey,
+            })
+        : (typeof c.metadata?.recordingUrl === "string" ? c.metadata.recordingUrl : null) ||
+          (typeof c.metadata?.recordUrl === "string" ? c.metadata.recordUrl : null) || null;
+      return ({
       id: c._id.toString(),
       org_id: c.organizationId.toString(),
       agent_id: c.agentId ? c.agentId.toString() : "",
@@ -77,14 +94,9 @@ export async function GET(req: NextRequest) {
       cost_credits: c.costCredits,
       summary: c.summary || "",
       outcome: c.outcome || "",
-      recording_url:
-        (typeof (c as unknown as { recording?: { url?: string } })?.recording?.url === "string"
-          ? (c as unknown as { recording?: { url?: string } }).recording?.url
-          : null) ||
-        (c.recordingId as unknown as PopulatedRecording)?.objectKey ||
-        (typeof c.metadata?.recordingUrl === "string" ? c.metadata.recordingUrl : null) ||
-        (typeof c.metadata?.recordUrl === "string" ? c.metadata.recordUrl : null) ||
-        null,
+      recording_url: recordingUrl,
+      recording_status: recording?.status || null,
+      transcription_status: recording?.transcriptionStatus || null,
       recording: (c as unknown as { recording?: Record<string, unknown> })?.recording || null,
       transcript:
         (c.transcriptId as unknown as PopulatedTranscript)?.segments?.map((s) => ({
@@ -119,6 +131,7 @@ export async function GET(req: NextRequest) {
         : undefined,
       created_at: c.createdAt.toISOString(),
       updated_at: c.updatedAt.toISOString(),
+      });
     }));
 
     return NextResponse.json({

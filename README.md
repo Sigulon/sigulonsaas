@@ -42,7 +42,8 @@ npm run db:seed
 - `packages/database/` — MongoDB/Mongoose models and repositories
 - `voice-runtime/` — LiveKit Agents worker (`uv sync`, `python agent.py start`, tests via unittest)
 - `services/campaign-worker/` — async LiveKit dial worker (same uv workflow)
-- `docs/` — guides · `deploy/gcp/` — web (Cloud Run) + workers (GKE/KEDA)
+- `docs/` — guides · `deploy/gcp/` — web (Cloud Run) + campaign queue worker (GKE/KEDA)
+- `voice-runtime/DEPLOYMENT.md` — Python voice agent on LiveKit Cloud Agents only
 
 ## Docs
 

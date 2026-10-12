@@ -89,7 +89,7 @@ export function AiAssistBox({ agentId, bundle, onApplyModifiedBundle }: AiAssist
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+          <Sparkles className="h-3.5 w-3.5 text-blue-600" />
           AI Script Assistant
         </h4>
         <span className="text-[10px] text-slate-400">Natural language editor</span>
@@ -101,7 +101,7 @@ export function AiAssistBox({ agentId, bundle, onApplyModifiedBundle }: AiAssist
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
           placeholder='e.g. "make it more polite", "ask budget earlier", "shorten opening"'
-          className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
+          className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-500"
           disabled={isLoading || Boolean(modifiedBundle)}
         />
 
@@ -113,7 +113,7 @@ export function AiAssistBox({ agentId, bundle, onApplyModifiedBundle }: AiAssist
             type="submit"
             size="sm"
             disabled={isLoading || !instruction.trim() || Boolean(modifiedBundle)}
-            className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs h-8 px-3"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs h-8 px-3 shadow-xs"
           >
             {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
             Modify
@@ -130,10 +130,10 @@ export function AiAssistBox({ agentId, bundle, onApplyModifiedBundle }: AiAssist
 
       {/* Diff Review Modal / Drawer */}
       {modifiedBundle && diffSections && (
-        <div className="p-3.5 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/30 space-y-3 mt-3 animate-in fade-in duration-150">
+        <div className="p-3.5 rounded-xl border border-blue-300 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-950/30 space-y-3 mt-3 animate-in fade-in duration-150">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+            <span className="text-xs font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-blue-600" />
               Proposed Script Changes (Review Diff)
             </span>
             <div className="flex items-center gap-1.5">
@@ -187,7 +187,7 @@ export function AiAssistBox({ agentId, bundle, onApplyModifiedBundle }: AiAssist
                     <span
                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                         sec.type === "modified"
-                          ? "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300"
+                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300"
                           : sec.type === "added"
                           ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300"
                           : "bg-red-100 text-red-800 dark:bg-red-900/60 dark:text-red-300"

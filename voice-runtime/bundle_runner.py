@@ -5,7 +5,7 @@ Loads published Agent Bundle (bundle_version 2) and runs it as a conversational
 state machine on LiveKit Agents:
 - Starts with `first_response` with {{variable}} placeholders substituted from lead metadata.
 - Sets active section prompt composed with business FAQs and global voice rules.
-- Lets LLM evaluate transitions along edges; skips disabled sections.
+- Exposes allowed edge conditions to the LLM and validates function-tool transitions.
 - Extracts capture variables as the conversation proceeds.
 - Saves captured variables into the call outcome / metadata.
 """
@@ -29,9 +29,19 @@ class BundleRunner:
         bundle: dict[str, Any],
         lead_data: Optional[dict[str, Any]] = None,
         language: str = "te-IN",
+        runtime_instructions: str = "",
     ) -> None:
         self.bundle = bundle
-        self.lead_data = lead_data or {}
+        # Dispatch payloads have appeared both as a flat map and as
+        # {customerContext: {...}}.  Keep the wrapper available for metadata,
+        # but flatten it for template resolution and capture prompts.
+        supplied = lead_data or {}
+        nested = supplied.get("customerContext") or supplied.get("customer_context")
+        self.lead_data = {
+            **(nested if isinstance(nested, dict) else {}),
+            **{k: v for k, v in supplied.items() if k not in ("customerContext", "customer_context")},
+        }
+        self.runtime_instructions = runtime_instructions.strip()
         self.language = bundle.get("exported_from", {}).get("language") or language
 
         # Parse sections
@@ -78,7 +88,7 @@ class BundleRunner:
         )
 
         if lead_name:
-            text = re.sub(r"\{\{?\s*lead_name\s*\}?\}", str(lead_name).strip(), text, flags=re.IGNORECASE)
+            text = re.sub(r"\{\{?\s*lead_name\s*\}?\}", lambda _: str(lead_name).strip(), text, flags=re.IGNORECASE)
         else:
             # Smoothly remove the asking tag if name is unknown
             text = re.sub(
@@ -92,7 +102,7 @@ class BundleRunner:
         # Substitute any other pre-call variables
         for key, val in self.lead_data.items():
             if val is not None:
-                text = re.sub(rf"\{{\{{?\s*{re.escape(key)}\s*\}}?\}}", str(val).strip(), text, flags=re.IGNORECASE)
+                text = re.sub(rf"\{{\{{?\s*{re.escape(str(key))}\s*\}}?\}}", lambda _: str(val).strip(), text, flags=re.IGNORECASE)
 
         # Clean remaining unresolved braces
         text = re.sub(r"\{\{[^}]+\}\}", "", text).strip()
@@ -101,15 +111,15 @@ class BundleRunner:
     def get_current_instructions(self) -> str:
         """Compose instructions for the active node in the graph."""
         if not self.current_section:
-            return "You are a polite AI voice assistant. Speak concisely."
+            return self.runtime_instructions or "You are a polite AI voice assistant. Speak concisely."
 
         node_prompt = self.current_section.get("prompt", "").strip()
 
         # Substitute known variables in node prompt
         all_known = {**self.lead_data, **self.extracted_variables}
         for k, v in all_known.items():
-            if v:
-                node_prompt = re.sub(rf"\{{\{{?\s*{re.escape(k)}\s*\}}?\}}", str(v).strip(), node_prompt, flags=re.IGNORECASE)
+            if v is not None:
+                node_prompt = re.sub(rf"\{{\{{?\s*{re.escape(str(k))}\s*\}}?\}}", lambda _: str(v).strip(), node_prompt, flags=re.IGNORECASE)
 
         # Append verified FAQs if available
         faq_text = ""
@@ -121,67 +131,69 @@ class BundleRunner:
             "\n\nCRITICAL VOICE RULES:\n"
             "- Ask at most 1 short question at a time.\n"
             "- Keep every reply under 2 spoken sentences (max 30 words).\n"
-            "- Warm, polite Telugu-English mix; keep words like enquiry, WhatsApp, loan in English.\n"
+            "- Follow the runtime language instructions; stay warm and polite.\n"
             "- Never read out URLs, JSON, curly braces, or markdown fences.\n"
             "- If the caller asks a business question, answer ONLY from the business FAQs above."
         )
 
-        return f"ACTIVE GOAL:\n{node_prompt}{faq_text}{rules}"
+        routes = json.dumps(self.allowed_transitions(), ensure_ascii=False)
+        key = self.current_section["section_key"]
+        routing = (
+            f"\n\nCURRENT SECTION: {key}\nALLOWED TRANSITIONS: {routes}\n"
+            "Evaluate these conditions against the conversation, including captured details. "
+            "When a condition is satisfied, call transition_bundle with this source section "
+            "and its allowed target BEFORE speaking the next goal. Never invent a target. "
+            "If uncertain, remain here and clarify. FAQs are contextual knowledge: answer "
+            "questions without changing section, then resume the current goal."
+        )
+        bundle_instructions = f"ACTIVE GOAL:\n{node_prompt}{faq_text}{rules}{routing}"
+        return f"{self.runtime_instructions}\n\n{bundle_instructions}" if self.runtime_instructions else bundle_instructions
 
-    def evaluate_transition(self, user_utterance: str) -> Optional[dict[str, Any]]:
-        """Evaluate edge conditions from current section to determine next section."""
-        if not self.current_section:
-            return None
+    def allowed_transitions(self) -> list[dict[str, str]]:
+        """Only enabled graph neighbours are executable; FAQs never consume state."""
+        return [
+            {"to_key": edge["to_key"], "condition": str(edge.get("condition") or "")}
+            for edge in (self.current_section or {}).get("edges") or []
+            if isinstance(edge, dict) and edge.get("to_key") in self.sections_by_key
+            and edge["to_key"] != "faqs" and edge.get("condition")
+        ]
 
-        edges = self.current_section.get("edges")
-        if not edges or not isinstance(edges, list):
-            return None  # Terminal section
+    def transition(self, source_key: str, target_key: str) -> None:
+        """Validate the LLM's requested edge; reject stale or arbitrary calls."""
+        if not self.current_section or self.current_section["section_key"] != source_key:
+            raise ValueError("Stale source section; consult current instructions.")
+        if target_key not in {edge["to_key"] for edge in self.allowed_transitions()}:
+            raise ValueError("Target is not an enabled outgoing transition; FAQs stay contextual.")
+        self.current_section = self.sections_by_key[target_key]
 
-        user_text = user_utterance.lower().strip()
+    def create_transition_tool(self, update_instructions):
+        from livekit.agents import function_tool, ToolError
+        import asyncio
 
-        # Check each edge condition
-        for edge in edges:
-            to_key = edge.get("to_key")
-            condition = str(edge.get("condition") or "").lower()
+        lock = asyncio.Lock()
 
-            target_section = self.sections_by_key.get(to_key)
-            if not target_section:
-                continue  # Skip missing or disabled sections
+        @function_tool
+        async def transition_bundle(source_key: str, target_key: str) -> str:
+            """Advance via an allowed edge only when its stated condition is satisfied.
 
-            # Match negative / decline / close conditions
-            if ("not interested" in condition or "decline" in condition or "wrong number" in condition or "close" in condition) and (
-                "no" in user_text
-                or "vaddu" in user_text
-                or "not interested" in user_text
-                or "busy" in user_text
-                or "wrong" in user_text
-            ):
-                self.current_section = target_section
-                log.info("[bundle_runner] transitioned to %s on negative condition: %s", to_key, condition)
-                return self.current_section
+            Args:
+                source_key: Current section key from the instructions.
+                target_key: Allowed target whose condition the conversation satisfies.
+            """
+            async with lock:
+                previous = self.current_section
+                try:
+                    self.transition(source_key, target_key)
+                except ValueError as exc:
+                    raise ToolError(str(exc)) from exc
+                try:
+                    await update_instructions(self.get_current_instructions())
+                except BaseException:
+                    self.current_section = previous
+                    raise
+                return self.get_current_instructions()
 
-            # Match question / faq condition
-            if "faq" in to_key.lower() or "question" in condition:
-                if "?" in user_text or "how" in user_text or "what" in user_text or "price" in user_text or "ekkada" in user_text or "enta" in user_text:
-                    # Note: FAQs are in-context, so we don't necessarily leave the active node unless requested
-                    pass
-
-            # Standard forward transition
-            if "once" in condition or "if" in condition or "after" in condition:
-                # Normal forward progression on affirmative or meaningful input
-                if len(user_text) > 2 and "no" not in user_text:
-                    self.current_section = target_section
-                    log.info("[bundle_runner] transitioned to %s on condition: %s", to_key, condition)
-                    return self.current_section
-
-        # If no explicit match but first edge exists, advance on affirmative
-        first_edge = edges[0]
-        target = self.sections_by_key.get(first_edge.get("to_key"))
-        if target and len(user_text) > 1:
-            self.current_section = target
-            return self.current_section
-
-        return None
+        return transition_bundle
 
     def extract_variables_from_turn(self, user_utterance: str) -> None:
         """Extract capture variables mentioned in caller utterance."""

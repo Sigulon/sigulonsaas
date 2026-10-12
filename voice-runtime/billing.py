@@ -36,7 +36,7 @@ async def notify_credits_reserve(
     *,
     web_base: str | None = None,
     secret: str | None = None,
-    timeout_seconds: float = 3.0,
+    timeout_seconds: float = 10.0,
 ) -> bool:
     """POST the reserve ping. Returns True when the web service held credits."""
     base = (web_base if web_base is not None
@@ -63,7 +63,8 @@ async def notify_credits_reserve(
         body: Any = response.json()
         if body.get("insufficient"):
             log.warning("reserve ping: org balance insufficient (call=%s)", call_id)
-        return bool(body.get("ok"))
+            return False
+        return body.get("ok") is True
     except Exception as exc:  # noqa: BLE001 - billing must never break audio
         log.warning("reserve ping failed for call %s: %s", call_id, exc)
         return False

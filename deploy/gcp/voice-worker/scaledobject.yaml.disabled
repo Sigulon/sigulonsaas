@@ -1,3 +1,4 @@
+# RETIRED: LiveKit room agents deploy to LiveKit Cloud. Do not apply.
 # KEDA scales the voice worker on CPU (proxy for LiveKit concurrent
 # dispatch count), not HTTP RPS — the worker is outbound-only with no
 # ingress. At least one replica stays alive so inbound SIP dispatch never

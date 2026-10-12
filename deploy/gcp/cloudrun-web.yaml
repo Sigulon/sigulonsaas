@@ -64,8 +64,14 @@ spec:
               valueFrom: { secretKeyRef: { name: sigulon-livekit-webhook-secret, key: latest } }
             - name: LIVEKIT_AGENT_NAME
               value: sigulon-voice-agent
-            - name: GCS_RECORDINGS_BUCKET
+            - name: R2_ACCOUNT_ID
+              valueFrom: { secretKeyRef: { name: sigulon-r2-account-id, key: latest } }
+            - name: R2_BUCKET_NAME
               value: __RECORDINGS_BUCKET__
+            - name: R2_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: sigulon-r2-access-key-id, key: latest } }
+            - name: R2_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: sigulon-r2-secret-access-key, key: latest } }
             - name: PLIVO_DUAL_RUN
               value: "true"
             - name: PUBLIC_WEB_URL

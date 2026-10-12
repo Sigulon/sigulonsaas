@@ -138,10 +138,15 @@ export async function PATCH(
         ttsModel: VOICE_STACK.TTS.MODEL,
       },
     };
-    if (body.voiceId || body.voice_id) {
+    const requestedVoiceId = typeof body.voiceId === "string"
+      ? body.voiceId.trim()
+      : typeof body.voice_id === "string"
+        ? body.voice_id.trim()
+        : "";
+    if (requestedVoiceId) {
       partialConfig.voice = {
         ...existingAgent.config.voice,
-        voiceId: body.voiceId || body.voice_id,
+        voiceId: requestedVoiceId,
       };
     }
     if (body.language) {

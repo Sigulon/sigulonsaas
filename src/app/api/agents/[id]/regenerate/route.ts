@@ -5,7 +5,7 @@ import { AgentRepository } from "@sigulon/database";
 import { applyAiAssist } from "@/lib/agent-assist";
 import { generateAgentWithLlm } from "@/lib/agent-generation";
 import { compileBundleToSystemPrompt } from "@/lib/agent-bundle";
-import { AgentBundle } from "@/lib/agent-bundle/schema";
+import { AgentBundle, AgentBundleSchema } from "@/lib/agent-bundle/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -71,7 +71,7 @@ export async function POST(
       agentName,
     });
 
-    const newBundle = genResult.bundle;
+    const newBundle = AgentBundleSchema.parse(genResult.bundle);
     const systemPrompt = compileBundleToSystemPrompt(newBundle);
 
     const updated = await AgentRepository.updateDraft(id, orgId, {
